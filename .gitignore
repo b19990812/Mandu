@@ -19,9 +19,10 @@ local.properties
 .env
 .env.*
 
-# 本次日常使用基线只保存当前安装包，历史包继续留在本机。
+# 安装包按版本显式归档，已归档版本保留；其他历史包留在本机。
 /artifacts/*
 !/artifacts/0.9.5/
+!/artifacts/0.9.8/
 
 # 本机生成缓存。
 __pycache__/

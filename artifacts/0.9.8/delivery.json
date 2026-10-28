@@ -1,0 +1,86 @@
+{
+  "version": "0.9.8",
+  "versionCode": 26,
+  "artifact": "artifacts/0.9.8/hs-mihon-release-default-signed.hap",
+  "sha256": "952844d1aa9e774aea26cb118b49d642563ca53936239e19a06c8a51dd765e54",
+  "bytes": 8028161,
+  "metadata": {
+    "bundleName": "com.hsmihon.reader",
+    "versionName": "0.9.8",
+    "versionCode": 26,
+    "minAPIVersion": 60101024,
+    "targetAPIVersion": 260000026,
+    "compileSdkVersion": "26.0.0.105",
+    "deviceTypes": [
+      "phone",
+      "tablet"
+    ],
+    "hasNativeCurl": true
+  },
+  "historySemantics": "最近时间内，按每部漫画最近阅读时间筛选；边界包含；1个月=30天；全部历史无时间限制",
+  "historyDeletion": "仅隐藏历史列表，保留阅读位置、已读标记、收藏、书签和下载；确认前重新阅读的记录保留",
+  "focusedHistoryChecks": 7,
+  "focusedSearchChecks": 12,
+  "deviceInstalled": true,
+  "deviceQuery": "升级",
+  "enabledSources": 8,
+  "initialResults": 191,
+  "coverGrid": "2至7列；每源默认预览一行；可查看全部；点击源标题折叠；支持全部展开和全部折叠",
+  "nativeImageNodes": {
+    "hs-release-folded": 0,
+    "hs-release-copy-open": 7,
+    "hs-release-hip-covers": 7
+  },
+  "detailReturnPreservesResults": true,
+  "historyAfterDeviceValidation": 17,
+  "historyRecovery": {
+    "unchangedTablesExcludingHistoryVisibility": 12,
+    "changed": [],
+    "visibleManga": 17
+  },
+  "coverLimitation": "包子静态封面CDN在本真机网络返回Cloudflare 403；UA、Referer和去缩略图参数对照均未消除；保留占位且不阻塞详情导航",
+  "hipFixSourceHashesUnchanged": true,
+  "fullRegression": false,
+  "sourceHashes": [
+    {
+      "path": "entry/src/main/ets/model/HistoryDeletion.ets",
+      "sha256": "7833b45744e76c43a2adc2879a4ddfd9be3bdb8804070d64fbc231d8a6e9b30e"
+    },
+    {
+      "path": "entry/src/main/ets/storage/ProgressRepository.ets",
+      "sha256": "fa79f51b30ae3cbd532cf7077b376dac31c4425fce9e28d767a94d67ecfddf4a"
+    },
+    {
+      "path": "entry/src/main/ets/vm/HistoryVM.ets",
+      "sha256": "b1b3e1d4ca1d018c856ff9d9a5b70cb1edd1ca84e878c9ee0c316e5708ddf2ab"
+    },
+    {
+      "path": "entry/src/main/ets/ui/HistoryPanel.ets",
+      "sha256": "eb4e39ba2e17b826f28d398169b2d944a47752e8207b2cd548189edeaeebb070"
+    },
+    {
+      "path": "entry/src/main/ets/pages/HistoryPage.ets",
+      "sha256": "6029cccf90a968210e4775d4467c279f68311832d928f958fed28afec111b031"
+    },
+    {
+      "path": "entry/src/main/ets/vm/SearchVM.ets",
+      "sha256": "4b441e70b5fbc2debda357c65f08924f78bd56e4eee94212ef99836469f46a06"
+    },
+    {
+      "path": "entry/src/main/ets/pages/SearchPage.ets",
+      "sha256": "0c56e81ab4c2da629bbacc04e480e2bbdd6d95adc234242e7c73507d866031f9"
+    },
+    {
+      "path": "entry/src/main/ets/ui/MangaCover.ets",
+      "sha256": "74937240d431131e858e3b535a795c39baf42da9a17319b8c391790f0e1fc5c8"
+    },
+    {
+      "path": "entry/src/main/ets/network/RcpTransport.ets",
+      "sha256": "00220c65bae9013b48161730b9713daf9bf2f90d5c217291ce4f30cddbc6e604"
+    },
+    {
+      "path": "AppScope/app.json5",
+      "sha256": "bce46e187e595ebe5cf20aa44af94fbef622d86f214290453091447d1a7e4d73"
+    }
+  ]
+}
