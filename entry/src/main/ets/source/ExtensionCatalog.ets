@@ -8,6 +8,8 @@ export interface ExtensionEntry { pkg: string; externalId: string; name: string;
 export interface AdditionalSource { name: string; address: string; status: string; nativeId?: string; }
 export function additionalSources(): AdditionalSource[] {
   return [
+    { name: '漫画库',address: 'https://www.manhuaku.com.cn/',status: '目录与线路 API、原生页面数据混合接入；设备阅读待确认',nativeId: 'org.hsmihon.manhuaku' },
+    { name: '漫画柜',address: 'https://www.manhuagui.com/',status: '网页 HTML 接入；设备阅读待确认',nativeId: 'org.hsmihon.manhuagui' },
     { name: 'JoyACG',address: 'https://joyacg.cc/',status: '已接入漫画列表、整本目录与页清单；设备阅读待确认',nativeId: 'org.hsmihon.joyacg' },
     { name: 'E-Hentai',address: 'https://e-hentai.org/',status: '待适配：画廊分页、动态图片域名与下载限额尚未接入' }
   ];
@@ -41,9 +43,9 @@ export class ExtensionCatalog {
           if (pkg === 'eu.kanade.tachiyomi.extension.zh.baozimanhuaplus' && id.scalar === '4654438345013653772') { entry.nativeId = 'org.hsmihon.baoziplus'; entry.status = '原生适配器已接入，待站点运行确认'; }
           if (pkg === 'eu.kanade.tachiyomi.extension.zh.hipmh' && id.scalar === '10879178251255350') { entry.nativeId = 'org.hsmihon.hipmh'; entry.status = '图片清单协议已验证；未验证图片下载与展示'; }
           if (pkg === 'eu.kanade.tachiyomi.extension.zh.vomicmh' && id.scalar === '3001986353') { entry.nativeId = 'org.hsmihon.vomic'; entry.status = '已接入公开目录与登录清单解析；真实登录及下载待确认'; }
-          if (pkg === 'eu.kanade.tachiyomi.extension.zh.manwayuplus' && id.scalar === '1506592945012434101') { entry.nativeId = 'org.hsmihon.manwa'; entry.status = '已接入当前网站API、完整目录及图片解码；设备阅读待确认'; }
         }
-        output.push(entry); if (output.length > 1024) { throw new AppError(ErrorCode.RESPONSE_TOO_LARGE,'源目录超过1024项'); }
+        if (pkg !== 'eu.kanade.tachiyomi.extension.zh.manwayuplus') { output.push(entry); }
+        if (output.length > 1024) { throw new AppError(ErrorCode.RESPONSE_TOO_LARGE,'源目录超过1024项'); }
       });
     }); return output;
   }

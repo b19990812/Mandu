@@ -9,6 +9,7 @@ import { UrlPolicy } from './UrlPolicy';
 import { RequestScheduler } from './RequestScheduler';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { CopyApiPolicy } from './CopyApiPolicy';
+import { isDirectoryPost } from './ReadPostPolicy';
 
 export class RcpTransport implements Transport {
   private static tls12Hosts: Set<string> = new Set();
@@ -60,6 +61,7 @@ export class RcpTransport implements Transport {
     if (!Object.keys(headers).some((key: string) => key.toLowerCase() === 'user-agent')) { headers['User-Agent'] = 'HS-Mihon/0.3 (HarmonyOS; anonymous-reader)'; }
     if (!Object.keys(headers).some((key: string) => key.toLowerCase() === 'accept-language')) { headers['Accept-Language'] = 'zh-CN,zh;q=0.9,en;q=0.5'; }
     let address = this.policy.validate(plan.url).toString();
+    const directoryPost = isDirectoryPost(plan,sink !== undefined);
     const visited: string[] = [];
     for (let hop = 0; hop <= 5; hop++) {
       this.check(ctx);
@@ -80,7 +82,7 @@ export class RcpTransport implements Transport {
           this.copyApi.headers().forEach((pair: HeaderPair) => { requestHeaders[pair.name] = pair.value; });
           await this.copyApi.wait(ctx); this.check(ctx);
         }
-        response = await this.once(address, requestHeaders, plan.maxBytes, ctx, sink);
+        response = await this.once(address, requestHeaders, plan.maxBytes, ctx, sink,directoryPost);
       }
       finally { release(); }
       if (response.statusCode === 429 || response.statusCode >= 500 && response.statusCode <= 599) {
@@ -88,6 +90,7 @@ export class RcpTransport implements Transport {
       }
       const redirect = [301, 302, 303, 307, 308].indexOf(response.statusCode) >= 0;
       if (!redirect) { return response; }
+      if (directoryPost) { throw new AppError(ErrorCode.POLICY_DENIED,'漫画库目录 POST 不接受跳转，请使用当前网站根网址'); }
       if (!this.allowRedirects) { throw new AppError(ErrorCode.POLICY_DENIED,'仓库目录不接受跳转，请使用最终 HTTPS 地址'); }
       if (hop === 5) { throw new AppError(ErrorCode.POLICY_DENIED, '跳转次数超限'); }
       const location = response.headers.find((pair: HeaderPair) => pair.name.toLowerCase() === 'location');
@@ -107,11 +110,11 @@ export class RcpTransport implements Transport {
   }
 
   private async once(address: string, headers: rcp.RequestHeaders, maxBytes: number,
-    ctx: CallContext, sink?: ByteSink): Promise<TransportResponse> {
+    ctx: CallContext, sink?: ByteSink,directoryPost: boolean = false): Promise<TransportResponse> {
     this.check(ctx);
     const remaining = ctx.deadlineMs - Date.now();
     const session = rcp.createSession();
-    const request = new rcp.Request(address, 'GET', headers);
+    const request = new rcp.Request(address, directoryPost ? 'POST' : 'GET', headers);
     let timedOut = false;
     let exceeded = false;
     let received = 0;

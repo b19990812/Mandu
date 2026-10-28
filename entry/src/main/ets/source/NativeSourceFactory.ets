@@ -12,7 +12,10 @@ import { url } from '@kit.ArkTS';
 import { CopyApiSource } from './adapters/CopyApiSource';
 import { usesCopyApi, copyApiBase } from './CopyAccess';
 import { COPY_API_IMAGE_HOSTS } from './adapters/CopyApiFormat';
-import { ManwaSource, MANWA_IMAGE_HOSTS, MANWA_COVER_HOSTS } from './adapters/ManwaSource';
+import { ManhuaguiSource } from './adapters/ManhuaguiSource';
+import { MANHUAGUI_ASSET_HOSTS } from './adapters/ManhuaguiReaderData';
+import { ManhuakuSource } from './adapters/ManhuakuSource';
+import { MANHUAKU_ASSET_HOSTS } from './adapters/ManhuakuFormat';
 import { JoyAcgSource, JOY_IMAGE_HOSTS, JOY_COVER_HOSTS } from './adapters/JoyAcgSource';
 
 export function nativeHosts(site: SourceSiteAccess): string[] {
@@ -22,7 +25,8 @@ export function nativeHosts(site: SourceSiteAccess): string[] {
     case 'org.hsmihon.copy': hosts = site.allowedHosts.concat(usesCopyApi(site) ? COPY_API_IMAGE_HOSTS : COPY_IMAGE_HOSTS,COPY_COVER_HOSTS,usesCopyApi(site) ? [new url.URL(copyApiBase(site.copyApiBaseUrl)).hostname] : []); break;
     case 'org.hsmihon.hipmh': hosts = site.allowedHosts.concat(HIP_HOSTS); break;
     case 'org.hsmihon.vomic': hosts = site.allowedHosts.concat(VOMIC_HOSTS); break;
-    case 'org.hsmihon.manwa': hosts = site.allowedHosts.concat(MANWA_IMAGE_HOSTS,MANWA_COVER_HOSTS); break;
+    case 'org.hsmihon.manhuagui': hosts = site.allowedHosts.concat(MANHUAGUI_ASSET_HOSTS); break;
+    case 'org.hsmihon.manhuaku': hosts = site.allowedHosts.concat(MANHUAKU_ASSET_HOSTS); break;
     case 'org.hsmihon.joyacg': hosts = site.allowedHosts.concat(JOY_IMAGE_HOSTS,JOY_COVER_HOSTS); break;
     default: throw new AppError(ErrorCode.UNSUPPORTED,'此源尚无本项目适配器');
   }
@@ -34,7 +38,8 @@ export function createNativeSource(site: SourceSiteAccess,transport: Transport):
     case 'org.hsmihon.copy': return usesCopyApi(site) ? new CopyApiSource(site,transport) : new CopySource(site,transport);
     case 'org.hsmihon.hipmh': return new HipSource(site,transport);
     case 'org.hsmihon.vomic': return new VomicSource(site,transport);
-    case 'org.hsmihon.manwa': return new ManwaSource(site,transport);
+    case 'org.hsmihon.manhuagui': return new ManhuaguiSource(site,transport);
+    case 'org.hsmihon.manhuaku': return new ManhuakuSource(site,transport);
     case 'org.hsmihon.joyacg': return new JoyAcgSource(site,transport);
     default: throw new AppError(ErrorCode.UNSUPPORTED,'此源尚无本项目适配器');
   }

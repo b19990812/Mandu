@@ -51,7 +51,7 @@ export class NativeSourceRegistry implements NativeSourceResolver {
     if (key) { const raw = this.files.readText(key,4096); if (!raw || await payloadDigest(raw) !== key || new JsonExtractor().parse(raw).members.get('id')?.scalar !== id) { throw new AppError(ErrorCode.CORRUPT_FILE,'内置源固定快照无效'); } }
     const site = await this.sites.access(id); const guard = async (): Promise<void> => this.assertCurrent(id,entry.state.revision);
     const api = usesCopyApi(site);
-    const transport = new RegistryTransport(new RcpTransport(new UrlPolicy(entry.rule.allowedHosts),api,true,api ? new url.URL(copyApiBase(site.copyApiBaseUrl)).origin : ''),entry.state,guard,key !== undefined);
+    const transport = new RegistryTransport(new RcpTransport(new UrlPolicy(entry.rule.allowedHosts),api || id === 'org.hsmihon.manhuaku',true,api ? new url.URL(copyApiBase(site.copyApiBaseUrl)).origin : ''),entry.state,guard,key !== undefined);
     const adapter: Source = createNativeSource(site,transport);
     await guard(); return { source: new RegisteredSource(adapter,entry.state,guard),rule: entry.rule,revision: entry.state.revision,snapshotKey: entry.state.active,transport: transport };
   }

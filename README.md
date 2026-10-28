@@ -1,6 +1,12 @@
 # 漫读 · HS Mihon
 
-以 [Mihon](https://github.com/mihonapp/mihon) 的书架、详情及沉浸阅读交互为参考的原生 HarmonyOS 漫画阅读应用。当前 **0.9.8（versionCode 26）**，ArkTS / ArkUI / Stage / 单 entry 模块。API 26 编译及目标，最低 HarmonyOS 6.1.1（API 24），支持手机和平板。
+以 [Mihon](https://github.com/mihonapp/mihon) 的书架、详情及沉浸阅读交互为参考的原生 HarmonyOS 漫画阅读应用。当前 **0.9.10（versionCode 28）**，ArkTS / ArkUI / Stage / 单 entry 模块。API 26 编译及目标，最低 HarmonyOS 6.1.1（API 24），支持手机和平板。
+
+0.9.10 新增漫画库：完整目录及图片线路使用站点 JSON API，搜索、详情与正文地址由原生 HTTP 解析公开页面数据，不执行网页脚本。主机真实链路已取得16项搜索结果、66章目录、首/末章14/12页清单及1张完整WebP；9组定向检查和Release签名构建通过，未安装设备、未验收全章。详见[漫画库接入与API获取记录](docs/manhuaku-api-0.9.10.md)。
+
+漫画柜已改为直接解析 HTML，覆盖搜索、四栏目、详情、完整目录和章节图片清单，并删除旧第三方 API 及其设置。11 组定向检查和 Release 签名构建通过；主机在线搜索两页、235 章目录、54 张图片清单与首张 WebP 已验证，真机整章待验。见 [HTML 接入修复及安装包](docs/manhuagui-html.md)。
+
+0.9.9 移除了漫蛙漫画源及专用图片解码器。当时的漫画柜第三方 API 接入现已被上述 HTML 实现替代；原始故障与验证记录保留在 [0.9.9 历史说明](docs/manhuagui-api-0.9.9.md)。
 
 截至 2026-10-28，用户已确认基础功能可供日常使用。0.9.8 增加单部漫画或最近时间范围的历史删除，保留阅读位置、已读、收藏、书签和下载；全局搜索采用自适应封面网格，支持按源折叠及全部展开/折叠。此前 0.9.7 统一已激活源的全局搜索，0.9.6 修复 HIP 正文 API 链路。使用方式、既有定向检查和真机验证范围见 [0.9.8 说明](docs/history-cover-search-0.9.8.md)、[0.9.7 说明](docs/global-search-0.9.7.md)和 [0.9.6 说明](docs/hip-api-fix-0.9.6.md)。这次仓库同步未重跑功能测试；包子封面真机网络 403 等限制仍按专题记录保留。
 
@@ -8,7 +14,7 @@
 
 0.8.6 将阅读历史按漫画汇总，每部只显示最近章节和位置，移除200条显示截断；隐藏整部漫画的历史入口，保留逐章进度、已读及书签。图片预缓存默认和选项上限提高至20张，单双页均按图片数量预取。见[历史与20张预缓存说明](docs/history-prefetch-0.8.6.md)。
 
-源适配开发候选已到 **0.9.3**：新增漫蛙当前网站 API、完整目录、图片分页及流式解码；新增 JoyACG 漫画搜索、列表、整本目录与图片清单；Vomic 增加更新、题材分类和完结栏目。15 组协议检查、7 组生产下载链路合成检查和 Release 签名构建通过；真实正文图片和设备阅读尚未验证。启用方式、候选包与证据见 [多漫画源接入说明](docs/multi-sources-0.9.3.md)。此前 COPY 独立 API 与网页模式保留，见 [COPY API 接入说明](docs/copy-api-integration-2026-10-28.md)；0.9.1 的 Vomic、HIP 等进展见[源适配进展](docs/source-adaptation-2026-10-28.md)。
+历史源适配 **0.9.3** 接入 JoyACG 漫画搜索、列表、整本目录与图片清单，Vomic 增加更新、题材分类和完结栏目；当时的漫蛙适配已在 0.9.9 移除。历史检查、候选包与证据见 [多漫画源接入说明](docs/multi-sources-0.9.3.md)。COPY 独立 API 与网页模式保留，见 [COPY API 接入说明](docs/copy-api-integration-2026-10-28.md)；0.9.1 的 Vomic、HIP 等进展见[源适配进展](docs/source-adaptation-2026-10-28.md)。
 
 0.8.5 修复漫画源首页未打包路由导致点击无响应；阅读器改用XComponent/OpenGL ES原生曲面网格，实现单双页页角卷曲、正反面纹理与动态光影。修复旧页面回调覆盖新实例、Release原生接口被混淆及双页翻动下半幅白块。真实双页正向/反向中间帧与区域对比通过，稳定60FPS和手机尺寸完整矩阵仍待验。见[曲面翻页实现与证据](docs/page-curl-0.8.5.md)。
 
@@ -41,10 +47,10 @@
 
 ## 使用与安装
 
-正式包：[0.9.8 Release](artifacts/0.9.8/hs-mihon-release-default-signed.hap)；摘要见 [SHA256SUMS](artifacts/0.9.8/SHA256SUMS)，既有验证汇总见 [delivery.json](artifacts/0.9.8/delivery.json)。采用本机开发签名；此前已保留数据覆盖安装并确认版本、启动与进程存活。安装时保留数据，不要卸载旧版。各版验证范围见对应专题记录。
+当前签名包：[0.9.10 漫画库独立归档](artifacts/0.9.10/manhuaku-20261028/hs-mihon-release-default-signed.hap)；摘要见 [SHA256SUMS](artifacts/0.9.10/manhuaku-20261028/SHA256SUMS)。该包本轮未安装到设备，漫画库真实主机链路见版本说明；此前已验收包保留在 [0.9.8](artifacts/0.9.8/hs-mihon-release-default-signed.hap)。采用本机开发签名，覆盖安装保留数据，不要卸载旧版。各版验证范围见对应专题记录。
 
 ```powershell
-& 'D:\Software\DevEco Studio\sdk\default\openharmony\toolchains\hdc.exe' install -r .\artifacts\0.9.8\hs-mihon-release-default-signed.hap
+& 'D:\Software\DevEco Studio\sdk\default\openharmony\toolchains\hdc.exe' install -r .\artifacts\0.9.10\manhuaku-20261028\hs-mihon-release-default-signed.hap
 ```
 
 浏览 → 点击包子/COPY名称 → 原生首页 → 漫画卡片 → 详情 → 章节进入阅读；首页右上角可搜索或打开网站。其他规则源点击名称进入搜索。更多中包含下载管理、设置、源规则、自定义网站和章节试读。试读的内置普通 / 长图示例明确为自有合成图，不会自动代替真实源失败。
@@ -75,6 +81,8 @@ Copy-Item .\build-profile.example.json5 .\build-profile.json5
 
 ## 项目记录
 
+- [0.9.10漫画库混合API与接口获取记录](docs/manhuaku-api-0.9.10.md)
+- [0.9.9移除漫蛙与漫画柜API接入](docs/manhuagui-api-0.9.9.md)
 - [0.9.8历史删除与封面搜索](docs/history-cover-search-0.9.8.md)
 - [0.9.7全局搜索](docs/global-search-0.9.7.md)
 - [0.9.6 HIP正文API修复](docs/hip-api-fix-0.9.6.md)

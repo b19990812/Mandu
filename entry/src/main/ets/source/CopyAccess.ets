@@ -12,7 +12,7 @@ export function copyProtocol(value?: string): string {
 }
 export function copyApiBase(value?: string): string { return new SourceSiteAddress().normalize(value === undefined ? COPY_DEFAULT_API : value); }
 export function usesCopyApi(site: SourceSiteAccess): boolean { return site.sourceId === 'org.hsmihon.copy' && copyProtocol(site.copyProtocol) === 'api'; }
-export function nativeAdapterVersion(site: SourceSiteAccess): number { return usesCopyApi(site) || site.sourceId === 'org.hsmihon.hipmh' ? 2 : 1; }
+export function nativeAdapterVersion(site: SourceSiteAccess): number { return usesCopyApi(site) || site.sourceId === 'org.hsmihon.hipmh' || site.sourceId === 'org.hsmihon.manhuagui' ? 2 : 1; }
 export function nativeSnapshot(site: SourceSiteAccess): string {
   const copyConfig = site.sourceId === 'org.hsmihon.copy' ? ',"protocol":' + JSON.stringify(copyProtocol(site.copyProtocol)) + ',"apiBaseUrl":' + JSON.stringify(copyApiBase(site.copyApiBaseUrl)) + ',"resolution":"source","session":' + JSON.stringify(usesCopyApi(site) ? 'anonymous' : 'site-cookie') : '';
   return '{"schema":1,"id":' + JSON.stringify(site.sourceId) + ',"version":' + nativeAdapterVersion(site).toString() + ',"baseUrl":' + JSON.stringify(site.baseUrl) + copyConfig + '}';

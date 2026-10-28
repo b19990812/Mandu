@@ -8,6 +8,7 @@ export interface RequestPlan {
   headers: HeaderPair[];
   maxBytes: number;
   responseKind?: string;
+  method?: string;
 }
 
 export interface TransportResponse {
@@ -18,7 +19,7 @@ export interface TransportResponse {
   bytes: number;
 }
 
-// P0 is anonymous GET only. Credentials and retries are added at T03b, not in UI.
+// Defaults to GET. RcpTransport permits only the bodyless native Manhuaku directory POST.
 export interface Transport {
   send(plan: RequestPlan, ctx: CallContext): Promise<TransportResponse>;
   streamToFile(plan: RequestPlan, ctx: CallContext, sink: ByteSink): Promise<TransportResponse>;

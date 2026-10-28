@@ -30,6 +30,9 @@ struct SourcesPage {
               Text(site.copyProtocol === 'web' ? '网页接入' : 'API 接入（匿名）').fontSize(14)
               if (site.copyProtocol !== 'web') { Text(site.copyApiBaseUrl || COPY_DEFAULT_API).fontSize(13) }
             }
+            if (site.sourceId === 'org.hsmihon.manhuagui') {
+              Text('网页接入（HTML 解析）').fontSize(14)
+            }
             Button('漫画源首页').fontSize(14).enabled(!this.vm.busy && this.vm.editingSourceId === '')
               .onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/SourceHomePage',params: { sourceId: site.sourceId } }))
             Button('打开网站首页').fontSize(14).enabled(!this.vm.busy && this.vm.editingSourceId === '')

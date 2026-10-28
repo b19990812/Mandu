@@ -5,7 +5,6 @@ import { FileStore } from '../storage/FileStore';
 import { AppError, ErrorCode } from '../model/ErrorTypes';
 import { checkCall, requireHttpSuccess } from '../source/SourceHttp';
 import { FileVerifier, VerifiedImage } from './FileVerifier';
-import { ManwaImageSink } from './ManwaImageSink';
 
 export async function transferAsset(files: FileStore,key: string,source: ChapterPageSource,chapter: SourceRef,page: PageRef,transport: Transport,ctx: CallContext,maxBytes: number,attempts: number = 3): Promise<VerifiedImage> {
   let refresh = false;
@@ -13,11 +12,9 @@ export async function transferAsset(files: FileStore,key: string,source: Chapter
     checkCall(ctx); let verified: VerifiedImage | undefined = undefined;
     try {
       const image = await source.resolveImage(chapter,page,refresh,ctx);
-      if (image.encoding && (source.id !== 'org.hsmihon.manwa' || image.encoding !== 'manwa-aes256-v1')) { throw new AppError(ErrorCode.POLICY_DENIED,'此来源不允许使用图片解码器'); }
+      if (image.encoding) { throw new AppError(ErrorCode.POLICY_DENIED,'不支持此图片编码'); }
       await files.writeStream(key,async (sink) => {
-        const decoded = image.encoding ? new ManwaImageSink(sink,ctx,maxBytes) : undefined;
-        const response = await transport.streamToFile({ sourceId: source.id,url: image.url,headers: image.headers,maxBytes: maxBytes,responseKind: 'image' },ctx,decoded || sink); requireHttpSuccess(response);
-        if (decoded) { await decoded.finish(); }
+        const response = await transport.streamToFile({ sourceId: source.id,url: image.url,headers: image.headers,maxBytes: maxBytes,responseKind: 'image' },ctx,sink); requireHttpSuccess(response);
       },async (part: string) => { verified = await new FileVerifier().verify(part,ctx); });
       checkCall(ctx); return verified!;
     } catch (error) {
