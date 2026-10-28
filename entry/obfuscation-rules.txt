@@ -1,0 +1,34 @@
+# Public ArkUI/Ability entry points are retained by the build tool.
+-enable-property-obfuscation
+-enable-toplevel-obfuscation
+-enable-filename-obfuscation
+-enable-export-obfuscation
+
+# Versioned Preferences JSON is a durable contract shared by debug/release builds.
+-keep-property-name
+schemaVersion
+revision
+sites
+sourceId
+baseUrl
+previousBaseUrl
+updatedAt
+
+# htmlparser2 invokes these callbacks through its public handler protocol.
+onopentag
+onclosetag
+ontext
+
+# Stable app navigation parameters.
+mangaId
+chapterId
+offlineOnly
+trialToken
+
+# Native NAPI exports are literal C++ property names and form a shared ABI.
+cache
+retain
+clear
+present
+presented
+metrics

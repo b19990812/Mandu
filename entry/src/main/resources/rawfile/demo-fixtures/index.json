@@ -1,0 +1,186 @@
+[
+  {
+    "path": "/api/search?q=&page=1",
+    "file": "response_0.json"
+  },
+  {
+    "path": "/api/search?q=&page=2",
+    "file": "response_1.json"
+  },
+  {
+    "path": "/api/search?q=missing&page=1",
+    "file": "response_2.json"
+  },
+  {
+    "path": "/api/manga/m1",
+    "file": "response_3.json"
+  },
+  {
+    "path": "/api/manga/m1/chapters?page=1",
+    "file": "response_4.json"
+  },
+  {
+    "path": "/api/manga/m1/chapters?page=2",
+    "file": "response_5.json"
+  },
+  {
+    "path": "/api/manga/m1/chapters?page=3",
+    "file": "response_6.json"
+  },
+  {
+    "path": "/api/chapter/c1/pages?page=1",
+    "file": "response_7.json"
+  },
+  {
+    "path": "/api/chapter/c1/pages?page=2",
+    "file": "response_8.json"
+  },
+  {
+    "path": "/search?q=&page=1",
+    "file": "response_9.html"
+  },
+  {
+    "path": "/search?q=&page=2",
+    "file": "response_10.html"
+  },
+  {
+    "path": "/search?q=missing&page=1",
+    "file": "response_11.html"
+  },
+  {
+    "path": "/manga/m1",
+    "file": "response_12.html"
+  },
+  {
+    "path": "/manga/m1/chapters?page=1",
+    "file": "response_13.html"
+  },
+  {
+    "path": "/manga/m1/chapters?page=2",
+    "file": "response_14.html"
+  },
+  {
+    "path": "/manga/m1/chapters?page=3",
+    "file": "response_15.html"
+  },
+  {
+    "path": "/chapter/c1?page=1",
+    "file": "response_16.html"
+  },
+  {
+    "path": "/chapter/c1?page=2",
+    "file": "response_17.html"
+  },
+  {
+    "path": "/api/manga/m2",
+    "file": "response_18.json"
+  },
+  {
+    "path": "/manga/m2",
+    "file": "response_19.html"
+  },
+  {
+    "path": "/api/manga/m2/chapters?page=1",
+    "file": "response_20.json"
+  },
+  {
+    "path": "/manga/m2/chapters?page=1",
+    "file": "response_21.html"
+  },
+  {
+    "path": "/api/manga/m2/chapters?page=2",
+    "file": "response_22.json"
+  },
+  {
+    "path": "/manga/m2/chapters?page=2",
+    "file": "response_23.html"
+  },
+  {
+    "path": "/api/manga/m2/chapters?page=3",
+    "file": "response_24.json"
+  },
+  {
+    "path": "/manga/m2/chapters?page=3",
+    "file": "response_25.html"
+  },
+  {
+    "path": "/api/chapter/c2/pages?page=1",
+    "file": "response_26.json"
+  },
+  {
+    "path": "/chapter/c2?page=1",
+    "file": "response_27.html"
+  },
+  {
+    "path": "/api/chapter/c2/pages?page=2",
+    "file": "response_28.json"
+  },
+  {
+    "path": "/chapter/c2?page=2",
+    "file": "response_29.html"
+  },
+  {
+    "path": "/api/chapter/c3/pages?page=1",
+    "file": "response_30.json"
+  },
+  {
+    "path": "/chapter/c3?page=1",
+    "file": "response_31.html"
+  },
+  {
+    "path": "/api/chapter/c3/pages?page=2",
+    "file": "response_32.json"
+  },
+  {
+    "path": "/chapter/c3?page=2",
+    "file": "response_33.html"
+  },
+  {
+    "path": "/api/chapter/c4/pages?page=1",
+    "file": "response_34.json"
+  },
+  {
+    "path": "/chapter/c4?page=1",
+    "file": "response_35.html"
+  },
+  {
+    "path": "/api/chapter/c4/pages?page=2",
+    "file": "response_36.json"
+  },
+  {
+    "path": "/chapter/c4?page=2",
+    "file": "response_37.html"
+  },
+  {
+    "path": "/api/chapter/c5/pages?page=1",
+    "file": "response_38.json"
+  },
+  {
+    "path": "/chapter/c5?page=1",
+    "file": "response_39.html"
+  },
+  {
+    "path": "/api/chapter/c5/pages?page=2",
+    "file": "response_40.json"
+  },
+  {
+    "path": "/chapter/c5?page=2",
+    "file": "response_41.html"
+  },
+  {
+    "path": "/api/chapter/c6/pages?page=1",
+    "file": "response_42.json"
+  },
+  {
+    "path": "/chapter/c6?page=1",
+    "file": "response_43.html"
+  },
+  {
+    "path": "/api/chapter/c6/pages?page=2",
+    "file": "response_44.json"
+  },
+  {
+    "path": "/chapter/c6?page=2",
+    "file": "response_45.html"
+  }
+]

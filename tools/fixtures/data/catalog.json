@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "copyright": "Original synthetic fixtures authored for HS Mihon; CC0-1.0",
+  "manga": [
+    { "id": "m1", "title": "星海旅人 & 归途", "description": "自有测试故事，用于中文、实体和相对地址提取。", "chapters": ["c1", "c2", "c3"] },
+    { "id": "m2", "title": "纸飞机实验室", "description": "自有测试故事第二部，用于搜索分页。", "chapters": ["c4", "c5", "c6"] }
+  ]
+}

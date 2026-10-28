@@ -1,0 +1,66 @@
+[
+  {
+    "file": "ordinary.png",
+    "width": 640,
+    "height": 1024,
+    "bytes": 4475,
+    "format": "PNG",
+    "sha256": "ef2e1f70bf15c86dcce70127e7e16d44709a1dddbeb9c39a8273c1fc9b5ba2d9"
+  },
+  {
+    "file": "ordinary.jpg",
+    "width": 640,
+    "height": 1024,
+    "bytes": 18351,
+    "format": "JPEG",
+    "sha256": "e4456f2b08696e27e04c3426bf0277238b3abc5f69ccb08611674439ee6d08f9"
+  },
+  {
+    "file": "ordinary.webp",
+    "width": 640,
+    "height": 1024,
+    "bytes": 2466,
+    "format": "WEBP",
+    "sha256": "45420b7e538c59dac9d871bdf852d136996e2a96a4780622a08e9fc6dd89d552"
+  },
+  {
+    "file": "long_1080.png",
+    "width": 1080,
+    "height": 30000,
+    "bytes": 186230,
+    "format": "PNG",
+    "sha256": "0c80da023932c17b3936cdbe2211fb1773650f7376e403b35f11ea53e1617c00"
+  },
+  {
+    "file": "long_1080.jpg",
+    "width": 1080,
+    "height": 30000,
+    "bytes": 885349,
+    "format": "JPEG",
+    "sha256": "25b5728af65fdae2e565cec6fd61b6904799cded38f3df73033345a9ecf6e430"
+  },
+  {
+    "file": "long_webp.webp",
+    "width": 1080,
+    "height": 15000,
+    "bytes": 57230,
+    "format": "WEBP",
+    "sha256": "9abe1252f6a2f2f72e16da211119dc97fb156ddce5310ed8e003101b999e5883"
+  },
+  {
+    "file": "long_2160.png",
+    "width": 2160,
+    "height": 60000,
+    "bytes": 560141,
+    "format": "PNG",
+    "sha256": "64e9a3e250c79130df468ef738758851641b1d28824d31fa711355c3549cd8a8"
+  },
+  {
+    "file": "long_2160.jpg",
+    "width": 2160,
+    "height": 60000,
+    "bytes": 3455389,
+    "format": "JPEG",
+    "sha256": "b29f8462868f21877ea3ea1d3436648f73a2ded521446d4c766490b6b61cd578"
+  }
+]

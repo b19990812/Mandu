@@ -1,0 +1,179 @@
+{
+  "id": "org.example.demo.html",
+  "name": "HTML演示源",
+  "sourceVersion": 1,
+  "ruleFormatVersion": 1,
+  "engineMin": 1,
+  "engineMax": 1,
+  "baseUrl": "https://fixture.invalid/",
+  "allowedHosts": [
+    "fixture.invalid"
+  ],
+  "capabilities": [
+    "search",
+    "details",
+    "chapters",
+    "pages"
+  ],
+  "operations": {
+    "search": {
+      "request": {
+        "method": "GET",
+        "path": "/search",
+        "query": {
+          "q": "{{query}}",
+          "page": "{{page}}"
+        }
+      },
+      "extract": {
+        "format": "html",
+        "fields": {
+          "remoteId": {
+            "selector": "self",
+            "required": true,
+            "attr": "data-id"
+          },
+          "title": {
+            "selector": ".title",
+            "required": true,
+            "text": true,
+            "transforms": [
+              "trim"
+            ]
+          },
+          "locator": {
+            "selector": "self",
+            "required": true,
+            "attr": "href",
+            "transforms": [
+              "urlAbsolute"
+            ]
+          }
+        },
+        "items": "a.comic",
+        "requiredMarker": "#search-results",
+        "emptyMarker": "#search-results .empty"
+      },
+      "pagination": {
+        "mode": "url",
+        "start": 1,
+        "nextSelector": "a.next",
+        "nextAttr": "href"
+      }
+    },
+    "details": {
+      "request": {
+        "method": "GET",
+        "path": "/manga/{{mangaId}}"
+      },
+      "extract": {
+        "format": "html",
+        "fields": {
+          "title": {
+            "selector": "h1.title",
+            "required": true,
+            "text": true,
+            "transforms": [
+              "trim"
+            ]
+          },
+          "description": {
+            "selector": ".summary",
+            "required": true,
+            "text": true
+          }
+        },
+        "object": "body",
+        "requiredMarker": "h1.title"
+      },
+      "pagination": {
+        "mode": "none"
+      }
+    },
+    "chapters": {
+      "request": {
+        "method": "GET",
+        "path": "/manga/{{mangaId}}/chapters",
+        "query": {
+          "page": "{{page}}"
+        }
+      },
+      "extract": {
+        "format": "html",
+        "fields": {
+          "remoteId": {
+            "selector": "self",
+            "required": true,
+            "attr": "data-id"
+          },
+          "title": {
+            "selector": "self",
+            "required": true,
+            "text": true
+          },
+          "locator": {
+            "selector": "self",
+            "required": true,
+            "attr": "href",
+            "transforms": [
+              "urlAbsolute"
+            ]
+          },
+          "ordinal": {
+            "selector": "self",
+            "required": true,
+            "attr": "data-order",
+            "transforms": [
+              "integer"
+            ]
+          }
+        },
+        "items": "#chapters a.chapter",
+        "requiredMarker": "#chapters",
+        "emptyMarker": "#chapters .empty"
+      },
+      "pagination": {
+        "mode": "url",
+        "start": 1,
+        "nextSelector": "a.next",
+        "nextAttr": "href"
+      }
+    },
+    "pages": {
+      "request": {
+        "method": "GET",
+        "path": "/chapter/{{chapterId}}",
+        "query": {
+          "page": "{{page}}"
+        }
+      },
+      "extract": {
+        "format": "html",
+        "fields": {
+          "pageKey": {
+            "selector": "self",
+            "required": true,
+            "attr": "data-id"
+          },
+          "imageUrl": {
+            "selector": "self",
+            "required": true,
+            "attr": "data-src",
+            "transforms": [
+              "urlAbsolute"
+            ]
+          }
+        },
+        "items": "#reader img",
+        "requiredMarker": "#reader",
+        "emptyMarker": "#reader .empty"
+      },
+      "pagination": {
+        "mode": "url",
+        "start": 1,
+        "nextSelector": "a.next",
+        "nextAttr": "href"
+      }
+    }
+  }
+}

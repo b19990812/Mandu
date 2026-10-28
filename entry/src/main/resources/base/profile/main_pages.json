@@ -1,0 +1,3 @@
+{ "src": ["pages/HomePage", "pages/SourceHomePage", "pages/SourcesPage", "pages/ChapterReaderPage", "pages/RuleManagerPage", "pages/ExtensionManagerPage", "pages/SearchPage", "pages/DetailPage", "pages/LibraryPage", "pages/HistoryPage", "pages/ReaderPage", "pages/DownloadsPage", "pages/SettingsPage", "pages/LicensesPage", "pages/LocalImportPage", "pages/MigrationPage", "pages/SourceWebPage", "pages/TrackingPage"] }
+
+

@@ -1,0 +1,185 @@
+{
+  "id": "org.example.demo.json",
+  "name": "JSON演示源",
+  "sourceVersion": 1,
+  "ruleFormatVersion": 1,
+  "engineMin": 1,
+  "engineMax": 1,
+  "baseUrl": "https://fixture.invalid/",
+  "allowedHosts": [
+    "fixture.invalid"
+  ],
+  "capabilities": [
+    "search",
+    "details",
+    "chapters",
+    "pages"
+  ],
+  "operations": {
+    "search": {
+      "request": {
+        "method": "GET",
+        "path": "/api/search",
+        "query": {
+          "q": "{{query}}",
+          "page": "{{page}}"
+        }
+      },
+      "extract": {
+        "format": "json",
+        "fields": {
+          "remoteId": {
+            "from": "id",
+            "required": true,
+            "transforms": [
+              "string"
+            ]
+          },
+          "title": {
+            "from": "title",
+            "required": true,
+            "transforms": [
+              "trim"
+            ]
+          },
+          "locator": {
+            "from": "url",
+            "required": true,
+            "transforms": [
+              "urlAbsolute"
+            ]
+          },
+          "cover": {
+            "from": "cover",
+            "required": false,
+            "transforms": [
+              "urlAbsolute"
+            ]
+          }
+        },
+        "items": "$.data.items"
+      },
+      "pagination": {
+        "mode": "page",
+        "start": 1,
+        "nextPath": "$.data.nextPage"
+      }
+    },
+    "details": {
+      "request": {
+        "method": "GET",
+        "path": "/api/manga/{{mangaId}}"
+      },
+      "extract": {
+        "format": "json",
+        "fields": {
+          "remoteId": {
+            "from": "id",
+            "required": true,
+            "transforms": [
+              "string"
+            ]
+          },
+          "title": {
+            "from": "title",
+            "required": true
+          },
+          "locator": {
+            "from": "url",
+            "required": true,
+            "transforms": [
+              "urlAbsolute"
+            ]
+          },
+          "description": {
+            "from": "description",
+            "required": false
+          }
+        },
+        "object": "$.data"
+      },
+      "pagination": {
+        "mode": "none"
+      }
+    },
+    "chapters": {
+      "request": {
+        "method": "GET",
+        "path": "/api/manga/{{mangaId}}/chapters",
+        "query": {
+          "page": "{{page}}"
+        }
+      },
+      "extract": {
+        "format": "json",
+        "fields": {
+          "remoteId": {
+            "from": "id",
+            "required": true,
+            "transforms": [
+              "string"
+            ]
+          },
+          "title": {
+            "from": "title",
+            "required": true
+          },
+          "locator": {
+            "from": "url",
+            "required": true,
+            "transforms": [
+              "urlAbsolute"
+            ]
+          },
+          "ordinal": {
+            "from": "order",
+            "required": true,
+            "transforms": [
+              "integer"
+            ]
+          }
+        },
+        "items": "$.data.items"
+      },
+      "pagination": {
+        "mode": "page",
+        "start": 1,
+        "nextPath": "$.data.nextPage"
+      }
+    },
+    "pages": {
+      "request": {
+        "method": "GET",
+        "path": "/api/chapter/{{chapterId}}/pages",
+        "query": {
+          "page": "{{page}}"
+        }
+      },
+      "extract": {
+        "format": "json",
+        "fields": {
+          "pageKey": {
+            "from": "id",
+            "required": true,
+            "transforms": [
+              "string"
+            ]
+          },
+          "imageUrl": {
+            "from": "url",
+            "required": true,
+            "transforms": [
+              "urlAbsolute"
+            ]
+          }
+        },
+        "items": "$.data.items"
+      },
+      "pagination": {
+        "mode": "page",
+        "start": 1,
+        "nextPath": "$.data.nextPage"
+      }
+    }
+  }
+}

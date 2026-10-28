@@ -1,0 +1,8 @@
+{
+  "modelVersion": "26.0.0",
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "Stage application module",
+  "main": "",
+  "dependencies": { "@ohos/htmlparser2": "1.0.4", "libpagecurl.so": "file:./src/main/cpp/types/libpagecurl" }
+}

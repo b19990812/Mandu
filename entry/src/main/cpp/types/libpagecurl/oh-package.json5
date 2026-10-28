@@ -1,0 +1,6 @@
+{
+  "name": "libpagecurl.so",
+  "version": "1.0.0",
+  "description": "Native GPU paper surface",
+  "types": "./index.d.ts"
+}

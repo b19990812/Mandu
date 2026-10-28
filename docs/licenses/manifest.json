@@ -1,0 +1,62 @@
+[
+  {
+    "name": "@ohos/htmlparser2",
+    "version": "1.0.4",
+    "integrity": "sha512-J5x55qqpivkWHaQJ2k2wcb+Td5CMN2GZt3Pq8KRHn+Gdg4vCXZ4EkAvK0WlhLckzEFAxI62jW3EcfZ7dgeP7YQ==",
+    "files": [
+      "ohos-htmlparser2-1.0.4-c6932796-LICENSE",
+      "ohos-htmlparser2-1.0.4-dfb14fbb-NOTICE",
+      "ohos-htmlparser2-1.0.4-8dd93f64-README.OpenSource"
+    ]
+  },
+  {
+    "name": "@ohos/node-polyfill",
+    "version": "1.0.0",
+    "integrity": "sha512-NbU038EngLOlUm4zm9whfsPFYzzUYLrgZmW9aMHEJe4bFjHlPDIi6IS0hsfJlxgRWZDPKOnsMH6QutgfS2WxDw==",
+    "files": [
+      "ohos-node-polyfill-1.0.0-c6932796-LICENSE",
+      "ohos-node-polyfill-1.0.0-dfb14fbb-NOTICE",
+      "ohos-node-polyfill-1.0.0-8dd93f64-README.OpenSource"
+    ]
+  },
+  {
+    "name": "dom-serializer",
+    "version": "2.0.0",
+    "integrity": "sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==",
+    "files": [
+      "dom-serializer-2.0.0-c6932796-LICENSE"
+    ]
+  },
+  {
+    "name": "domelementtype",
+    "version": "2.3.0",
+    "integrity": "sha512-OLETBj6w0OsagBwdXnPdN0cnMfF9opN69co+7ZrbfPGrdpPVNBUj02spi6B1N7wChLQiPn4CSH/zJvXw56gmHw==",
+    "files": [
+      "domelementtype-2.3.0-c6932796-LICENSE"
+    ]
+  },
+  {
+    "name": "domhandler",
+    "version": "5.0.3",
+    "integrity": "sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==",
+    "files": [
+      "domhandler-5.0.3-c6932796-LICENSE"
+    ]
+  },
+  {
+    "name": "domutils",
+    "version": "3.2.2",
+    "integrity": "sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==",
+    "files": [
+      "domutils-3.2.2-c6932796-LICENSE"
+    ]
+  },
+  {
+    "name": "entities",
+    "version": "4.5.0",
+    "integrity": "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==",
+    "files": [
+      "entities-4.5.0-c6932796-LICENSE"
+    ]
+  }
+]

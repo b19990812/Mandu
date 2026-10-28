@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.5.0)
+project(pagecurl)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_library(pagecurl SHARED CurlRenderer.cpp CurlGeometry.cpp)
+target_compile_options(pagecurl PRIVATE -Wall -Wextra -Werror=return-type)
+target_link_libraries(pagecurl PUBLIC libace_ndk.z.so libace_napi.z.so libEGL.so libGLESv3.so libnative_vsync.so libpixelmap.so libhilog_ndk.z.so)

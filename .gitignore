@@ -1,0 +1,30 @@
+temp/
+.hvigor/
+build/
+entry/build/
+oh_modules/
+entry/oh_modules/
+local.properties
+.idea/
+*.p12
+*.p7b
+*.cer
+*.keystore
+
+# 本机签名配置；仓库提供不含凭据的 build-profile.example.json5。
+/build-profile.json5
+*.jks
+*.pem
+*.key
+.env
+.env.*
+
+# 本次日常使用基线只保存当前安装包，历史包继续留在本机。
+/artifacts/*
+!/artifacts/0.9.5/
+
+# 本机生成缓存。
+__pycache__/
+*.py[cod]
+.cxx/
+.cmake/

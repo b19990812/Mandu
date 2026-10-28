@@ -1,0 +1,21 @@
+{
+  "apiType": "stageMode",
+  "buildOption": {
+    "externalNativeOptions": { "path": "./src/main/cpp/CMakeLists.txt", "arguments": "", "cppFlags": "", "abiFilters": ["arm64-v8a"] }
+  },
+  "buildOptionSet": [{
+    "name": "release",
+    "arkOptions": {
+      "obfuscation": {
+        "ruleOptions": { "enable": true, "files": ["./obfuscation-rules.txt"] }
+      }
+    }
+  }],
+  "targets": [
+    { "name": "default", "source": { "pages": ["pages/HomePage", "pages/SourceHomePage", "pages/SourcesPage", "pages/ChapterReaderPage", "pages/RuleManagerPage", "pages/ExtensionManagerPage", "pages/SearchPage", "pages/DetailPage", "pages/LibraryPage", "pages/HistoryPage", "pages/ReaderPage", "pages/DownloadsPage", "pages/SettingsPage", "pages/LicensesPage", "pages/LocalImportPage", "pages/MigrationPage", "pages/SourceWebPage", "pages/TrackingPage"] } },
+    { "name": "lab", "source": { "pages": ["pages/HomePage", "pages/SourceHomePage", "pages/SourcesPage", "pages/ChapterReaderPage", "pages/RuleManagerPage", "pages/ExtensionManagerPage", "pages/SearchPage", "pages/DetailPage", "pages/LibraryPage", "pages/HistoryPage", "pages/ReaderPage", "pages/DownloadsPage", "pages/SettingsPage", "pages/LicensesPage", "pages/LocalImportPage", "pages/MigrationPage", "pages/SourceWebPage", "pages/TrackingPage", "pages/DebugLabPage"] } }
+  ]
+}
+
+
+

@@ -1,0 +1,8 @@
+{
+  "modelVersion": "26.0.0",
+  "name": "hs-mihon",
+  "version": "0.1.0",
+  "description": "Native HarmonyOS comic reader: P0 foundation",
+  "dependencies": {},
+  "devDependencies": {}
+}
