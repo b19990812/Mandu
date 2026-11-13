@@ -16,7 +16,11 @@ import { ManhuaguiSource } from './adapters/ManhuaguiSource';
 import { MANHUAGUI_ASSET_HOSTS } from './adapters/ManhuaguiReaderData';
 import { ManhuakuSource } from './adapters/ManhuakuSource';
 import { MANHUAKU_ASSET_HOSTS } from './adapters/ManhuakuFormat';
+import { MyComicSource } from './adapters/MyComicSource';
+import { MYCOMIC_ASSET_HOSTS } from './adapters/MyComicFormat';
 import { JoyAcgSource, JOY_IMAGE_HOSTS, JOY_COVER_HOSTS } from './adapters/JoyAcgSource';
+import { EHENTAI_ID } from '../network/EhentaiAccess';
+import { EhentaiSource } from './adapters/EhentaiSource';
 
 export function nativeHosts(site: SourceSiteAccess): string[] {
   let hosts: string[];
@@ -27,7 +31,9 @@ export function nativeHosts(site: SourceSiteAccess): string[] {
     case 'org.hsmihon.vomic': hosts = site.allowedHosts.concat(VOMIC_HOSTS); break;
     case 'org.hsmihon.manhuagui': hosts = site.allowedHosts.concat(MANHUAGUI_ASSET_HOSTS); break;
     case 'org.hsmihon.manhuaku': hosts = site.allowedHosts.concat(MANHUAKU_ASSET_HOSTS); break;
+    case 'org.hsmihon.mycomic': hosts = site.allowedHosts.concat(MYCOMIC_ASSET_HOSTS); break;
     case 'org.hsmihon.joyacg': hosts = site.allowedHosts.concat(JOY_IMAGE_HOSTS,JOY_COVER_HOSTS); break;
+    case EHENTAI_ID: hosts = site.allowedHosts.concat('api.e-hentai.org','ehgt.org','hath.network'); break;
     default: throw new AppError(ErrorCode.UNSUPPORTED,'此源尚无本项目适配器');
   }
   return hosts.filter((host: string,index: number,all: string[]) => all.indexOf(host) === index);
@@ -40,7 +46,9 @@ export function createNativeSource(site: SourceSiteAccess,transport: Transport):
     case 'org.hsmihon.vomic': return new VomicSource(site,transport);
     case 'org.hsmihon.manhuagui': return new ManhuaguiSource(site,transport);
     case 'org.hsmihon.manhuaku': return new ManhuakuSource(site,transport);
+    case 'org.hsmihon.mycomic': return new MyComicSource(site,transport);
     case 'org.hsmihon.joyacg': return new JoyAcgSource(site,transport);
+    case EHENTAI_ID: return new EhentaiSource(site,transport);
     default: throw new AppError(ErrorCode.UNSUPPORTED,'此源尚无本项目适配器');
   }
 }

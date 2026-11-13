@@ -2,7 +2,7 @@ import { util } from '@kit.ArkTS';
 import { image } from '@kit.ImageKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppError, ErrorCode } from '../model/ErrorTypes';
-import { CallContext } from '../model/RequestTypes';
+import { CallContext, RequestUrgency, NetworkPriority } from '../model/RequestTypes';
 import { CancelScope } from '../model/CancelScope';
 import { ChapterPageSource, PageRef, SourceRef } from '../model/SourceTypes';
 import { Transport } from '../network/Transport';
@@ -12,10 +12,13 @@ import { AssetProvider } from './AssetProvider';
 import { BrowserCache } from './BrowserCache';
 import { FilePins } from '../storage/FilePins';
 import { transferAsset } from './AssetTransfer';
+import { requestPriority } from '../network/RequestPriority';
+import { RequestScheduler } from '../network/RequestScheduler';
+import { NetworkPerf } from '../diagnostic/NetworkPerf';
 
 export interface ReaderAsset { uri: string; width: number; height: number; bytes: number; }
 interface CacheItem { index: number; key: string; asset: ReaderAsset; release: () => void; }
-interface PendingAsset { request: Promise<ReaderAsset>; cancel: CancelScope; consumers: number; complete: boolean; }
+interface PendingAsset { request: Promise<ReaderAsset>; cancel: CancelScope; consumers: number; complete: boolean; priority: RequestUrgency; }
 
 // Four session leases over the shared bounded disk cache. No direct Image(remoteURL).
 export class ReaderAssetCache implements AssetProvider {
@@ -54,14 +57,21 @@ export class ReaderAssetCache implements AssetProvider {
     let pending = this.pending.get(page.ordinal);
     if (!pending || pending.cancel.cancelled) {
       const scope = new CancelScope();
-      const requestContext: CallContext = { callId: ctx.callId + '-shared', deadlineMs: Date.now() + 60000, cancel: scope, ruleRevision: ctx.ruleRevision };
+      const priority: RequestUrgency = { value: requestPriority(ctx) };
+      const requestContext: CallContext = { callId: ctx.callId + '-shared', deadlineMs: Date.now() + 60000, cancel: scope, ruleRevision: ctx.ruleRevision,priority: priority };
       const request = this.download(source, chapter, page, requestContext);
-      const current: PendingAsset = { request: request, cancel: scope, consumers: 0, complete: false };
+      const current: PendingAsset = { request: request, cancel: scope, consumers: 0, complete: false,priority: priority };
       this.pending.set(page.ordinal, current); pending = current;
       const finish = (): void => { current.complete = true; if (this.pending.get(page.ordinal) === current) { this.pending.delete(page.ordinal); } };
       request.then(finish, finish);
     }
+    if (requestPriority(ctx) < pending.priority.value) { pending.priority.value = requestPriority(ctx); RequestScheduler.reprioritize(); }
     return this.consume(pending, ctx);
+  }
+
+  prioritize(index: number): void {
+    const pending = this.pending.get(index); if (!pending) { return; }
+    pending.priority.value = NetworkPriority.Visible; RequestScheduler.reprioritize();
   }
 
   private consume(pending: PendingAsset, ctx: CallContext): Promise<ReaderAsset> {
@@ -82,13 +92,14 @@ export class ReaderAssetCache implements AssetProvider {
   }
 
   private async download(source: ChapterPageSource, chapter: SourceRef, page: PageRef, ctx: CallContext): Promise<ReaderAsset> {
+    const started = Date.now();
     const key = this.prefix + '_' + page.ordinal.toString() + '_' + (++this.sequence).toString();
     const writing = FilePins.pin(this.files.localPath(key));
     try {
       const identity = await this.disk.identity(source.id, chapter.remoteId, page.pageKey, this.revisionKey || source.version.toString());
       const cached = this.forced.has(page.ordinal) ? undefined : await this.disk.acquire(identity);
       if (cached) {
-        try { checkCall(ctx); const asset = cached.asset; this.remember(page.ordinal,asset.uri.substring(asset.uri.lastIndexOf('/') + 1),asset); return asset; }
+        try { checkCall(ctx); const asset = cached.asset; this.remember(page.ordinal,asset.uri.substring(asset.uri.lastIndexOf('/') + 1),asset); NetworkPerf.stage(source.id,'asset-disk-hit',started,asset.bytes); return asset; }
         finally { cached.release(); }
       }
       checkCall(ctx);
@@ -112,6 +123,7 @@ export class ReaderAssetCache implements AssetProvider {
       }
       const asset: ReaderAsset = { uri: 'file://' + this.files.localPath(key), width: width, height: height, bytes: bytes };
       this.remember(page.ordinal, key, asset); await this.disk.put(identity, key, asset); this.forced.delete(page.ordinal);
+      NetworkPerf.stage(source.id,'asset-ready',started,bytes);
       return asset;
     } catch (error) {
       writing();

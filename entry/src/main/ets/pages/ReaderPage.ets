@@ -7,6 +7,8 @@ import { WebtoonViewer } from '../ui/WebtoonViewer';
 import { ReaderWindow } from '../reader/ReaderWindow';
 import { ReaderLifecycle } from '../reader/ReaderLifecycle';
 import { readerBackground, READER_MODES } from '../model/ReaderDisplay';
+import { EhentaiBrowserHost } from '../ui/EhentaiBrowserHost';
+import { EHENTAI_ID } from '../network/EhentaiAccess';
 
 interface ReaderParams { chapterId?: string; offlineOnly?: boolean; trialToken?: string; }
 
@@ -44,6 +46,7 @@ struct ReaderPage {
   }
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
+      if (this.vm.sourceId === EHENTAI_ID) { EhentaiBrowserHost() }
       Column() {
       if (this.vm.active && this.vm.usesPager() && this.vm.total > 0) {
         HorizontalPager({ vm: this.vm,epoch: this.vm.readerEpoch,requestRevision: this.vm.pagerRevision,zoom: this.zoom,readingDirection: this.vm.direction,gestures: this.vm.mode !== 'tap',
@@ -102,12 +105,15 @@ struct ReaderPage {
         }.width('100%').height('100%')
       }
       if (this.optionsVisible && this.menuVisible) {
-        Column() {
+        Stack({ alignContent: Alignment.Center }) {
+        Column() {}.width('100%').height('100%')
+          .hitTestBehavior(HitTestMode.Block)
+          .onClick(() => { this.optionsVisible = false; })
         Scroll() {
         Column({ space: 12 }) {
           Text('阅读设置').fontSize(19).fontColor('#FFFFFF')
           Row({ space: 8 }) {
-            Select([{ value: '水平滑动' },{ value: '纵向单页' },{ value: '无缝条漫' },{ value: '间隔连续' },{ value: '双页仿真卷页' },{ value: '点击单页' },{ value: '单页仿真卷页' }]).fontColor('#FFFFFF').backgroundColor('#40554B').selected(READER_MODES.indexOf(this.vm.mode)).value(['水平滑动','纵向单页','无缝条漫','间隔连续','双页仿真卷页','点击单页','单页仿真卷页'][READER_MODES.indexOf(this.vm.mode)]).onSelect((index: number) => { if (index >= 0 && index < READER_MODES.length) { this.zoom = 1; this.vm.switchMode(READER_MODES[index]); } })
+            Select([{ value: '水平滑动' },{ value: '纵向单页' },{ value: '无缝条漫' },{ value: '间隔连续' },{ value: '双页仿真卷页' },{ value: '点击单页' },{ value: '单页仿真卷页' },{ value: '连续滑动（无缝）' }]).fontColor('#FFFFFF').backgroundColor('#40554B').selected(READER_MODES.indexOf(this.vm.mode)).value(['水平滑动','纵向单页','无缝条漫','间隔连续','双页仿真卷页','点击单页','单页仿真卷页','连续滑动（无缝）'][READER_MODES.indexOf(this.vm.mode)]).onSelect((index: number) => { if (index >= 0 && index < READER_MODES.length) { this.zoom = 1; this.vm.switchMode(READER_MODES[index]); } })
             Button(this.vm.direction === 'ltr' ? '从左到右' : '从右到左').fontSize(13).onClick(() => this.vm.switchDirection())
           }
           Row({ space: 8 }) {
@@ -123,7 +129,7 @@ struct ReaderPage {
           Text(this.effects.brightness < 0 ? '亮度：跟随系统' : '阅读亮度：' + Math.round(this.effects.brightness * 100).toString() + '%').fontColor('#FFFFFF')
           Slider({ value: Math.max(5,this.effects.brightness * 100),min: 5,max: 100,step: 1 }).onChange((value: number) => { this.effects.brightness = value / 100; this.saveEffects(); })
           Button('亮度跟随系统').onClick(() => { this.effects.brightness = -1; this.saveEffects(); })
-          Text('水平、卷页及双页仿真均支持跟手拖动；左右区轻点即翻，中间轻点菜单、双击缩放，也可双指缩放。放大后优先平移；点击单页关闭拖动翻页。').fontSize(12).fontColor('#CBD8D4').maxLines(3)
+          Text('连续滑动：纵向无缝拼接，拖动跟手，松手停在当前位置。水平、卷页及双页仿真支持跟手拖动；左右区轻点即翻，中间轻点菜单、双击缩放，也可双指缩放。放大后优先平移；点击单页关闭拖动翻页。').fontSize(12).fontColor('#CBD8D4').maxLines(5)
           Row({ space: 8 }) {
             Button('缩小').fontSize(13).enabled(this.zoom > 1).onClick(() => { this.zoom = Math.max(1,this.zoom - 0.5); })
             Text(Math.round(this.zoom * 100).toString() + '%').fontColor('#FFFFFF').fontSize(14).width(46)
@@ -145,7 +151,7 @@ struct ReaderPage {
           Button('完成').fontSize(13).onClick(() => { this.optionsVisible = false; })
         }.padding(20).width('100%')
         }.height(Math.min(this.viewportHeight * 0.85,this.vm.trialMode ? 390 : 560)).width('90%').constraintSize({ maxWidth: 680 }).backgroundColor('#F02B3430').borderRadius(20).scrollBar(BarState.Auto)
-        }.width('100%').height('100%').justifyContent(FlexAlign.Center)
+        }.width('100%').height('100%')
       }
     }.width('100%').height('100%').backgroundColor(readerBackground(this.vm.background)).onAreaChange((_old: Area,area: Area) => { const height = Number(area.height); if (height > 0) { this.viewportHeight = height; } })
   }

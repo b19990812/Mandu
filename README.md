@@ -1,6 +1,6 @@
 # 漫读 · HS Mihon
 
-以 [Mihon](https://github.com/mihonapp/mihon) 的书架、详情及沉浸阅读交互为参考的原生 HarmonyOS 漫画阅读应用。当前 **0.9.10（versionCode 28）**，ArkTS / ArkUI / Stage / 单 entry 模块。API 26 编译及目标，最低 HarmonyOS 6.1.1（API 24），支持手机和平板。
+以 [Mihon](https://github.com/mihonapp/mihon) 的书架、详情及沉浸阅读交互为参考的原生 HarmonyOS 漫画阅读应用。当前源码版本 **0.9.24（versionCode 42）**，ArkTS / ArkUI / Stage / 单 entry 模块。API 26 编译及目标，最低 HarmonyOS 6.1.1（API 24），支持手机和平板。
 
 0.9.10 新增漫画库：完整目录及图片线路使用站点 JSON API，搜索、详情与正文地址由原生 HTTP 解析公开页面数据，不执行网页脚本。主机真实链路已取得16项搜索结果、66章目录、首/末章14/12页清单及1张完整WebP；9组定向检查和Release签名构建通过，未安装设备、未验收全章。详见[漫画库接入与API获取记录](docs/manhuaku-api-0.9.10.md)。
 
@@ -47,10 +47,11 @@
 
 ## 使用与安装
 
-当前签名包：[0.9.10 漫画库独立归档](artifacts/0.9.10/manhuaku-20261028/hs-mihon-release-default-signed.hap)；摘要见 [SHA256SUMS](artifacts/0.9.10/manhuaku-20261028/SHA256SUMS)。该包本轮未安装到设备，漫画库真实主机链路见版本说明；此前已验收包保留在 [0.9.8](artifacts/0.9.8/hs-mihon-release-default-signed.hap)。采用本机开发签名，覆盖安装保留数据，不要卸载旧版。各版验证范围见对应专题记录。
+仓库保留的历史签名包：[0.9.8](artifacts/0.9.8/hs-mihon-release-default-signed.hap)。当前源码需按[本机构建说明](#本机构建)配置签名并构建安装包；覆盖安装可保留数据，不要卸载旧版。各版验证范围见对应专题记录。
 
 ```powershell
-& 'D:\Software\DevEco Studio\sdk\default\openharmony\toolchains\hdc.exe' install -r .\artifacts\0.9.10\manhuaku-20261028\hs-mihon-release-default-signed.hap
+$hap = '.\artifacts\0.9.24\hs-mihon-release-default-signed.hap'
+& 'D:\Software\DevEco Studio\sdk\default\openharmony\toolchains\hdc.exe' install -r $hap
 ```
 
 浏览 → 点击包子/COPY名称 → 原生首页 → 漫画卡片 → 详情 → 章节进入阅读；首页右上角可搜索或打开网站。其他规则源点击名称进入搜索。更多中包含下载管理、设置、源规则、自定义网站和章节试读。试读的内置普通 / 长图示例明确为自有合成图，不会自动代替真实源失败。

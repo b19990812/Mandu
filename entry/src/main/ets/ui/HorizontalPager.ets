@@ -1,8 +1,12 @@
+import { TileDecoder } from '../image/TileDecoder';
+import { DecodeScheduler } from '../image/DecodeScheduler';
+import { ReaderPerf } from '../diagnostic/ReaderPerf';
 import { NativeCurlSurface } from './NativeCurlSurface';
 import { CurlGpuBridge } from '../reader/CurlGpuBridge';
 import { CurlGesture } from '../reader/CurlGesture';
 import { SpreadViewer } from './SpreadViewer';
 import { CurlFrameStore } from '../reader/CurlFrameStore';
+import { CurlSnapshotQueue } from '../reader/CurlSnapshotQueue';
 import { curlSnapshotScale, turnCompletes, spreadMargin } from '../reader/PageTurnGeometry';
 import { image } from '@kit.ImageKit';
 import { FrameCallback } from '@kit.ArkUI';
@@ -12,6 +16,7 @@ import { ReaderAsset } from '../image/ReaderAssetCache';
 import { PagerSlot, PagerWindow } from '../reader/PagerWindow';
 import { ReadingCanvas } from './ReadingCanvas';
 import { readerBackground } from '../model/ReaderDisplay';
+import { ErrorCode } from '../model/ErrorTypes';
 
 class ReleaseCurlFrames extends FrameCallback {
   private maps: image.PixelMap[];
@@ -97,7 +102,7 @@ export struct HorizontalPager {
   @State private slideOffset: number = 0;
   @State private viewportWidth: number = 1;
   @State private moving: boolean = false;
-  @State private hint: string = '';
+  @State @Watch('hintChanged') private hint: string = '';
   @State private edgeStretch: number = 1;
   @State private retryIndex: number = -1;
   @State private loadRevision: number = 0;
@@ -115,12 +120,25 @@ export struct HorizontalPager {
   private drawCurl(): number {
     const current = this.window.find(this.window.center); const next = this.window.find(this.curlTarget);
     if (!current || !next || !this.curlFront || !this.curlBehind) { return 0; }
-    return this.gpu.present(this.frameKey(current),this.frameKey(next),this.curlProgress,this.curlGesture.corner,
+    const sequence = this.gpu.present(this.frameKey(current),this.frameKey(next),this.curlProgress,this.curlGesture.corner,
       this.curlGesture.fingerY,this.curlReverse,this.curlBook,this.curlGesture.velocity,spreadMargin(this.viewportWidth) / this.viewportWidth);
+    if (ReaderPerf.firstFrame(sequence)) {
+      const turn = ReaderPerf.turns; const generation = this.generation;
+      const acknowledged = (): void => {
+        if (!this.visible || !ReaderPerf.enabled || turn !== ReaderPerf.turns || generation !== this.generation) { return; }
+        if (this.gpu.presented(sequence)) { ReaderPerf.firstSwapped(sequence); }
+        else { this.getUIContext().postFrameCallback(new TurnFrame(acknowledged)); }
+      };
+      this.getUIContext().postFrameCallback(new TurnFrame(acknowledged));
+    }
+    return sequence;
   }
   private curlTarget: number = -1;
   private textureGeneration: number = 0;
   private readonly frames: CurlFrameStore = new CurlFrameStore((maps: image.PixelMap[]) => this.retireFrames(maps));
+  private readonly captureJobs: Map<string,Promise<void>> = new Map();
+  private readonly snapshots: CurlSnapshotQueue = new CurlSnapshotQueue();
+  private preferredDirection: number = 1;
   private viewportHeight: number = 1;
   private retireFrames(maps: image.PixelMap[]): void {
     // PixelMap reads can still be running on a native worker when a slot expires.
@@ -132,10 +150,24 @@ export struct HorizontalPager {
   private releaseCurl(): void {
     this.gpu.clear();
     this.curlFront = undefined; this.curlBehind = undefined; this.curlTarget = -1; this.curlProgress = 0;
+    this.syncCurlPriority();
   }
   private curls(): boolean { return this.vm.mode === 'curl' || this.vm.mode === 'spread'; }
   private frameKey(slot: PagerSlot): string { return this.textureGeneration.toString() + ':' + slot.key + ':' + slot.paintRevision.toString() + ':' + (slot.companion?.paintRevision || 0).toString() + ':' + slot.ratio.toString() + ':' + (slot.companion?.ratio || 0).toString(); }
   private frameKeys(): string[] { return this.window.slots.map((slot: PagerSlot) => this.frameKey(slot)); }
+  private orderedSlots(): PagerSlot[] {
+    const target = this.decodeTarget >= 0 ? this.decodeTarget : this.pending;
+    return this.window.slots.slice().sort((a: PagerSlot,b: PagerSlot) => {
+      const rank = (slot: PagerSlot): number => slot.index === this.window.center ? 0 : slot.index === target ? 1 :
+        (slot.index - this.window.center) * this.preferredDirection > 0 ? 2 : 3;
+      return rank(a) - rank(b);
+    });
+  }
+  private syncCurlPriority(): void {
+    const keys = this.visible && this.curls() ? this.orderedSlots().map((slot: PagerSlot) => this.frameKey(slot)) : [];
+    this.snapshots.order(keys,this.curlFront !== undefined);
+    this.gpu.prioritize(keys);
+  }
   private prepareCurl(index: number): boolean {
     const current = this.window.find(this.window.center); const next = this.window.find(index);
     if (!current?.complete() || !next?.complete()) { return false; }
@@ -143,21 +175,35 @@ export struct HorizontalPager {
     if (!front || !behind || !this.gpu.ready(this.frameKey(current)) || !this.gpu.ready(this.frameKey(next))) { this.capture(current); this.capture(next); return false; }
     this.curlFront = front; this.curlBehind = behind; this.curlTarget = index;
     this.curlBook = this.vm.mode === 'spread';
-    this.curlReverse = (index - this.window.center) * this.sign() < 0; return true;
+    this.curlReverse = (index - this.window.center) * this.sign() < 0; this.syncCurlPriority(); return true;
   }
-  private async capture(slot: PagerSlot): Promise<void> {
-    if (!this.visible || !this.curls() || this.zoom > 1 || !slot.complete()) { return; }
-    const key = this.frameKey(slot); if (this.gpu.ready(key)) { return; } const generation = this.textureGeneration;
+  private capture(slot: PagerSlot): Promise<void> {
+    if (!this.visible || !this.curls() || this.zoom > 1 || !slot.complete()) { return Promise.resolve(); }
+    const key = this.frameKey(slot); if (this.gpu.ready(key)) { return Promise.resolve(); }
+    const existing = this.captureJobs.get(key); if (existing) { return existing; }
+    this.syncCurlPriority();
+    // Share the whole snapshot/upload/completion chain, not only its two inner jobs.
+    // A slow upload must not add one continuation and native retain per finger update.
+    const job = this.captureFrame(slot,key,this.textureGeneration).finally(() => {
+      if (this.captureJobs.get(key) === job) { this.captureJobs.delete(key); }
+    });
+    this.captureJobs.set(key,job); return job;
+  }
+  private async captureFrame(slot: PagerSlot,key: string,generation: number): Promise<void> {
     this.frames.retain(this.frameKeys());
     this.gpu.retain(this.frameKeys());
     const scale = curlSnapshotScale(this.getUIContext().vp2px(this.viewportWidth),this.getUIContext().vp2px(this.viewportHeight));
-    const captured = await this.frames.capture(key,() => this.getUIContext().getComponentSnapshot().get('pager-surface-' + slot.key,{ scale: scale,waitUntilRenderFinished: true }));
+    const snapshotAt = ReaderPerf.enabled ? Date.now() : 0;
+    const captured = await this.frames.capture(key,() => this.snapshots.capture(key,() => this.getUIContext().getComponentSnapshot().get('pager-surface-' + slot.key,{ scale: scale,waitUntilRenderFinished: true })));
     if (!this.visible || generation !== this.textureGeneration || this.window.find(slot.index) !== slot || this.frameKey(slot) !== key || !slot.complete()) { return; }
+    ReaderPerf.event('snapshot',Date.now() - snapshotAt,key);
     const map = this.frames.get(key);
+    const uploadAt = ReaderPerf.enabled ? Date.now() : 0;
     const uploaded = captured && map ? await this.gpu.cache(key,map) : false;
+    if (ReaderPerf.enabled) { ReaderPerf.event('native-cache',Date.now() - uploadAt,this.gpu.metrics()); }
     if (!this.visible || generation !== this.textureGeneration || this.window.find(slot.index) !== slot || this.frameKey(slot) !== key) { return; }
     if (!uploaded) {
-      if (this.pending >= 0) { this.hint = '翻页画面准备失败，点击重试'; this.retryIndex = this.pending; this.cancelPending(); }
+      if (this.pending >= 0 && (slot.index === this.pending || slot.index === this.window.center)) { this.hint = '翻页画面准备失败，点击重试'; this.retryIndex = this.pending; this.cancelPending(); }
       return;
     }
     if (this.dragging) { this.dragTo(this.lastOffset); }
@@ -169,9 +215,10 @@ export struct HorizontalPager {
   private visualChanged(): void {
     this.cancelMotion(); this.textureGeneration++; this.frames.clear();
     this.gpu.retain([]);
+    this.snapshots.order([],false);
     if (this.visible) { this.getUIContext().postFrameCallback(new PrepareTurnFrames(() => this.captureReady())); }
   }
-  private captureReady(): void { if (this.visible) { this.window.slots.forEach((slot: PagerSlot) => this.capture(slot)); } }
+  private captureReady(): void { if (this.visible) { this.syncCurlPriority(); this.orderedSlots().forEach((slot: PagerSlot) => this.capture(slot)); } }
   private viewportSettled(index: number): void {
     const slot = this.window.find(this.window.group(index));
     if (slot && !this.moving) { this.capture(slot); }
@@ -180,7 +227,7 @@ export struct HorizontalPager {
   private commit(slot: PagerSlot, restore: boolean = false): void {
     const focus = restore && this.vm.index >= slot.index && this.vm.index < slot.index + this.window.span ? this.vm.index : slot.index;
     const ratio = focus === slot.index ? slot.ratio : slot.companion?.ratio || 0;
-    this.vm.pagerCommit(slot.index,slot.asset!,ratio,slot.companion?.asset,focus);
+    this.vm.pagerCommit(slot.index,slot.asset!,ratio,slot.companion?.asset,focus); this.decodeTarget = -1; this.updateDecodeFocus();
   }
   private visible: boolean = false;
   private initialized: boolean = false;
@@ -193,22 +240,42 @@ export struct HorizontalPager {
   private anchorOffset: number = 0;
   private held: boolean = false;
   private animationTarget: number = -1;
-  aboutToAppear(): void { this.visible = true; this.reset(); }
-  aboutToDisappear(): void { this.visible = false; this.cancelMotion(); this.textureGeneration++; this.frames.clear(); this.neighbourGeneration++; this.chapterCover?.dispose(); this.chapterCover = undefined; this.window.clear(); }
+  private decodeTarget: number = -1;
+  private updateDecodeFocus(): void {
+    const uris: string[] = [];
+    const indices = this.decodeTarget >= 0 ? [this.window.center,this.decodeTarget] : [this.window.center];
+    indices.forEach((index: number) => { const slot = this.window.find(index); if (slot?.asset) { uris.push(slot.asset.uri); } if (slot?.companion?.asset) { uris.push(slot.companion.asset.uri); } });
+    DecodeScheduler.focus(uris);
+    this.syncCurlPriority();
+  }
+  private probeTimer: number = -1;
+  private probeTurns: number = 0;
+  private probeDirection: number = 1;
+  private probeNext: number = 0;
+  private hintChanged(): void { ReaderPerf.hint(this.hint); }
+  private probeTick(): void {
+    if (!ReaderPerf.enabled || !this.vm.trialMode || this.vm.sourceId || !this.visible || !this.initialized || this.moving || Date.now() < this.probeNext) { return; }
+    if (this.probeTurns >= 64) { clearInterval(this.probeTimer); this.probeTimer = -1; ReaderPerf.hint(''); const state = DecodeScheduler.counts(); ReaderPerf.event('decode-state',0,JSON.stringify([state.limit,state.active,state.waiting,state.preloadActive,state.peakActive,TileDecoder.liveBytes(),TileDecoder.reservedBytes()])); ReaderPerf.event('done',0,this.gpu.metrics()); ReaderPerf.enabled = false; return; }
+    if (this.window.center + this.probeDirection * this.window.span < 0 || this.window.center + this.probeDirection * this.window.span >= this.window.total) { this.probeDirection *= -1; }
+    if (this.window.total <= this.window.span) { ReaderPerf.event('run-error',0,'not-enough-synthetic-pages'); clearInterval(this.probeTimer); return; }
+    this.turn(this.probeDirection * this.sign()); this.probeTurns++; this.probeNext = Date.now() + 750;
+  }
+  aboutToAppear(): void { this.visible = true; this.reset(); if (ReaderPerf.enabled && ReaderPerf.automatic) { this.probeNext = Date.now() + 1500; this.probeTimer = setInterval(() => this.probeTick(),100); } }
+  aboutToDisappear(): void { if (this.probeTimer >= 0) { clearInterval(this.probeTimer); } this.visible = false; this.cancelMotion(); DecodeScheduler.focus([]); this.textureGeneration++; this.frames.clear(); this.neighbourGeneration++; this.chapterCover?.dispose(); this.chapterCover = undefined; this.window.clear(); }
   private reset(): void {
     if (!this.visible) { return; }
     this.visualChanged(); this.neighbourGeneration++; this.initialized = false;
     const previous = this.window.detachCenter();
     this.chapterCover?.dispose(); this.chapterCover = previous;
     this.window.onFailure = (index: number, message: string) => this.failed(index,message);
-    this.window.onChange = (_index: number) => { if (this.visible) { this.loadRevision++; } };
+    this.window.onChange = (_index: number) => { if (this.visible) { this.updateDecodeFocus(); this.loadRevision++; } };
     this.window.reset(this.vm.index,this.vm.total,this.vm.ratio,(index,scope) => this.vm.pagerAsset(index,scope),this.vm.mode === 'spread' ? 2 : 1);
     this.pending = this.window.center;
   }
   private sign(): number { return this.readingDirection === 'rtl' ? -1 : 1; }
   private setMoving(value: boolean): void { this.moving = value; if (this.vm.pagerMoving !== value) { this.vm.pagerMoving = value; } }
   private cancelMotion(): void {
-    this.releaseCurl(); this.generation++; this.dragging = false; this.settling = false; this.pending = -1; this.held = false; this.anchorOffset = 0; this.handingOff = false;
+    this.decodeTarget = -1; this.updateDecodeFocus(); this.releaseCurl(); this.generation++; this.dragging = false; this.settling = false; this.pending = -1; this.held = false; this.anchorOffset = 0; this.handingOff = false;
     this.setOffset(0); this.slideOffset = 0; this.edgeStretch = 1; this.retryIndex = -1; this.lastOffset = 0; this.setMoving(false); this.hint = '';
   }
   private failed(index: number, message: string): void {
@@ -229,6 +296,7 @@ export struct HorizontalPager {
       this.frames.invalidate(previousKey); this.frames.retain(this.frameKeys()); this.gpu.retain(this.frameKeys());
     }
     if (!this.visible || !slot.complete()) { return; }
+    ReaderPerf.event('viewport-ready',0,slot.index.toString());
     this.capture(slot);
     if (slot.index === this.window.center && this.chapterCover) { this.chapterCover.dispose(); this.chapterCover = undefined; }
     if (this.pending === slot.index && !this.dragging && !this.settling) {
@@ -250,14 +318,23 @@ export struct HorizontalPager {
       if (this.visible && !this.settling && revision === this.requestRevision) { this.request(this.vm.pagerTarget); }
     });
   }
+  private loadTarget(index: number): PagerSlot | undefined {
+    const slot = this.window.ensure(index);
+    if (slot?.errorCode === ErrorCode.BROWSER_RETRY_ON_DISPLAY) { this.window.retry(slot.index); }
+    if (slot?.companion?.errorCode === ErrorCode.BROWSER_RETRY_ON_DISPLAY) { this.window.retry(slot.companion.index); }
+    this.vm.prioritizePage(index);
+    return slot;
+  }
   private request(index: number): void {
     if (!this.visible || this.vm.chapterChanging || this.chapterCover || this.settling || this.dragging) { return; }
     this.neighbourGeneration++; this.retryIndex = -1;
     if (this.window.group(index) === this.window.center) { this.cancelMotion(); if (this.vm.mode === 'spread') { this.vm.focusSpread(index,this.window.page(index)?.ratio || 0); } return; }
     index = this.window.group(index);
+    ReaderPerf.turn(index);
     this.curlGesture.begin(this.viewportHeight,this.viewportHeight);
     this.pending = index;
-    const slot = this.window.ensure(index);
+    this.preferredDirection = Math.sign(index - this.window.center) || this.preferredDirection;
+    this.decodeTarget = index; const slot = this.loadTarget(index); this.updateDecodeFocus();
     if (!slot) { this.pending = -1; this.hint = ''; return; }
     const failed = slot.failed ? slot : slot.companion?.failed ? slot.companion : undefined;
     this.hint = failed ? failed.status : slot.complete() ? '' : '正在准备目标页…';
@@ -273,6 +350,7 @@ export struct HorizontalPager {
   }
   private start(event: GestureEvent): void {
     if (this.handingOff || this.vm.chapterChanging || this.chapterCover || !this.gestures || this.zoom > 1 || !this.window.find(this.window.center)?.complete()) { return; }
+    ReaderPerf.event('gesture-start');
     if (!this.held) { this.curlGesture.begin(this.touchY,this.viewportHeight); } else { this.curlGesture.resume(this.viewportHeight); }
     this.generation++; this.settling = false; this.held = false; this.anchorOffset = this.dragOffset;
     this.neighbourGeneration++; this.pending = -1; this.retryIndex = -1; this.dragging = true; this.setMoving(true); this.drag(event);
@@ -286,7 +364,8 @@ export struct HorizontalPager {
   private dragTo(delta: number): void {
     this.lastOffset = delta;
     const logical = (delta < 0 ? 1 : -1) * this.sign(); const target = this.window.center + logical * this.window.span;
-    const slot = this.window.ensure(target);
+    this.preferredDirection = logical;
+    this.decodeTarget = target; const slot = this.loadTarget(target); this.updateDecodeFocus();
     if (!slot?.complete()) {
       if (this.curls()) { this.releaseCurl(); }
       this.setOffset(0);
@@ -305,6 +384,7 @@ export struct HorizontalPager {
   }
   private end(event: GestureEvent): void {
     if (!this.dragging) { return; } this.dragging = false;
+    ReaderPerf.event('gesture-end',0,this.lastOffset.toString());
     const logical = (this.lastOffset < 0 ? 1 : -1) * this.sign(); const target = this.window.center + logical * this.window.span;
     const complete = turnCompletes(this.dragOffset,this.viewportWidth,event.velocityX);
     if ((target < 0 || target >= this.window.total) && turnCompletes(this.lastOffset,this.viewportWidth,event.velocityX)) {
@@ -347,7 +427,8 @@ export struct HorizontalPager {
           if (!sequence || Date.now() - began > duration + 1500) { this.cancelMotion(); this.hint = '卷页渲染未完成，当前页已保留'; return; }
           this.getUIContext().postFrameCallback(new TurnFrame(wait)); return;
         }
-        if (index !== this.window.center && this.window.commit(index)) { this.commit(slot); }
+        if (ReaderPerf.enabled) { ReaderPerf.event('swap-ack',0,this.gpu.metrics()); }
+        if (index !== this.window.center && this.window.commit(index)) { this.commit(slot); ReaderPerf.committed(index); }
         this.setOffset(0); this.lastOffset = 0;
         // The exact final target remains on the GPU while ArkUI renders its
         // newly committed page. Clear the overlay only after that handoff.

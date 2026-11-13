@@ -10,6 +10,10 @@ import { payloadDigest } from '../storage/PayloadDigest';
 import { JsonExtractor } from '../parsing/JsonExtractor';
 import { UrlPolicy } from '../network/UrlPolicy';
 import { RcpTransport } from '../network/RcpTransport';
+import { MyComicBrowserTransport } from '../network/MyComicBrowserTransport';
+import { EhentaiBrowserTransport } from '../network/EhentaiBrowserTransport';
+import { EHENTAI_ID } from '../network/EhentaiAccess';
+import { Transport } from '../network/Transport';
 import { SourceSiteService } from './SourceSiteService';
 import { ManagedSource } from './SourceImportService';
 import { SourceHandle, NativeSourceResolver, RegisteredSource, RegistryTransport } from './SourceRegistry';
@@ -51,7 +55,11 @@ export class NativeSourceRegistry implements NativeSourceResolver {
     if (key) { const raw = this.files.readText(key,4096); if (!raw || await payloadDigest(raw) !== key || new JsonExtractor().parse(raw).members.get('id')?.scalar !== id) { throw new AppError(ErrorCode.CORRUPT_FILE,'内置源固定快照无效'); } }
     const site = await this.sites.access(id); const guard = async (): Promise<void> => this.assertCurrent(id,entry.state.revision);
     const api = usesCopyApi(site);
-    const transport = new RegistryTransport(new RcpTransport(new UrlPolicy(entry.rule.allowedHosts),api || id === 'org.hsmihon.manhuaku',true,api ? new url.URL(copyApiBase(site.copyApiBaseUrl)).origin : ''),entry.state,guard,key !== undefined);
+    const native = new RcpTransport(new UrlPolicy(entry.rule.allowedHosts),api || id === 'org.hsmihon.manhuaku',true,api ? new url.URL(copyApiBase(site.copyApiBaseUrl)).origin : '');
+    let channel: Transport = native;
+    if (id === 'org.hsmihon.mycomic') { channel = new MyComicBrowserTransport(native,site.baseUrl); }
+    if (id === EHENTAI_ID) { channel = new EhentaiBrowserTransport(native); }
+    const transport = new RegistryTransport(channel,entry.state,guard,key !== undefined);
     const adapter: Source = createNativeSource(site,transport);
     await guard(); return { source: new RegisteredSource(adapter,entry.state,guard),rule: entry.rule,revision: entry.state.revision,snapshotKey: entry.state.active,transport: transport };
   }

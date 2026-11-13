@@ -3,7 +3,7 @@ import { CallContext } from '../model/RequestTypes';
 import { CancelScope } from '../model/CancelScope';
 import { ByteSink } from '../model/ByteSink';
 import { SourcePackageStore, SourceState } from '../model/SourcePackageTypes';
-import { ChapterRef, ImageRequest, MangaDetail, MangaSummary, PageRef, PageToken, Source, SourceBatch, SourceRef, SourceDiscovery, SourceFeed, SourceBrowseQuery, SourceBrowseBatch } from '../model/SourceTypes';
+import { ChapterRef, ImageRequest, MangaDetail, MangaSummary, PageRef, PageToken, Source, SourceBatch, SourceRef, SourceDiscovery, SourceFeed, SourceBrowseQuery, SourceBrowseBatch, SourceCatalog, SourceCatalogSnapshot } from '../model/SourceTypes';
 import { RequestPlan, Transport, TransportResponse } from '../network/Transport';
 import { UrlPolicy } from '../network/UrlPolicy';
 import { checkCall } from './SourceHttp';
@@ -11,6 +11,7 @@ import { SourceImportService } from './SourceImportService';
 import { RuleSource } from './rules/RuleSource';
 import { ValidatedRulePackage } from './rules/RuleTypes';
 import { SourceChanges } from './SourceChanges';
+import { observeRetention } from '../network/ResponseRetentionPolicy';
 
 export interface SourceHandle { source: Source; rule: ValidatedRulePackage; revision: number; snapshotKey: string; transport: Transport; }
 export interface SourceWatch { check: () => void; release: () => void; }
@@ -78,10 +79,11 @@ export class RegistryTransport implements Transport {
     const cancel = new CancelScope(); const unsubscribe = ctx.cancel.subscribe(() => cancel.cancel());
     const unwatch = SourceChanges.subscribe(this.state.id, (state: SourceState) => { if (!state.enabled || state.removed || !this.pinned && state.revision !== this.state.revision) { cancel.cancel(); } });
     const address = SourceChanges.watchAddress(this.state.id,() => cancel.cancel());
-    const inner: CallContext = { callId: ctx.callId, deadlineMs: ctx.deadlineMs, cancel: cancel, ruleRevision: ctx.ruleRevision };
+    const inner: CallContext = { callId: ctx.callId, deadlineMs: ctx.deadlineMs, cancel: cancel, ruleRevision: ctx.ruleRevision,retention: ctx.retention,priority: ctx.priority };
     try {
       await this.guard(); checkCall(inner);
       const response = sink ? await this.delegate.streamToFile(plan, inner, sink) : await this.delegate.send(plan, inner);
+      observeRetention(ctx,response.headers);
       await this.guard(); checkCall(inner); return response;
     } catch (error) {
       await this.guard();
@@ -97,11 +99,13 @@ export class RegisteredSource implements Source {
   readonly id: string;
   readonly version: number;
   readonly discovery: SourceDiscovery | undefined;
+  readonly catalog: SourceCatalog | undefined;
   private readonly delegate: Source;
   private readonly guard: () => Promise<void>;
   constructor(delegate: Source, state: SourceState, guard: () => Promise<void>) {
     this.delegate = delegate; this.id = state.id; this.version = delegate.version; this.guard = guard;
     this.discovery = delegate.discovery ? new RegisteredDiscovery(delegate.discovery,guard) : undefined;
+    this.catalog = delegate.catalog ? new RegisteredCatalog(delegate.catalog,guard) : undefined;
   }
   async ensure(): Promise<void> { await this.guard(); }
   private async call<T>(ctx: CallContext, operation: () => Promise<T>): Promise<T> {
@@ -122,6 +126,17 @@ export class RegisteredSource implements Source {
   }
   resolveImage(chapter: SourceRef, page: PageRef, refresh: boolean, ctx: CallContext): Promise<ImageRequest> {
     return this.call(ctx, () => this.delegate.resolveImage(chapter, page, refresh, ctx));
+  }
+}
+
+class RegisteredCatalog implements SourceCatalog {
+  private readonly delegate: SourceCatalog;
+  private readonly guard: () => Promise<void>;
+  constructor(delegate: SourceCatalog,guard: () => Promise<void>) { this.delegate = delegate; this.guard = guard; }
+  async loadCatalog(manga: SourceRef,ctx: CallContext): Promise<SourceCatalogSnapshot> {
+    checkCall(ctx); await this.guard(); checkCall(ctx);
+    const snapshot = await this.delegate.loadCatalog(manga,ctx);
+    checkCall(ctx); await this.guard(); checkCall(ctx); return snapshot;
   }
 }
 

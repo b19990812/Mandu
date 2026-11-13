@@ -7,6 +7,7 @@ export struct BrowsePanel {
   @State private sources: ManagedSource[] = [];
   @State private status: string = '';
   @Prop @Watch('load') revision: number = 0;
+  @Prop compact: boolean = false;
   private active: boolean = false;
   private async openSource(item: ManagedSource): Promise<void> {
     if (!item.state.enabled) { this.status = '此源已停用，请先启用'; return; }
@@ -28,14 +29,33 @@ export struct BrowsePanel {
       await this.load();
     } catch (error) { if (this.active) { this.status = viewError(error as Error); } }
   }
+  @Builder
+  private extensionsButton() {
+    Button('扩展仓库').fontSize(13).constraintSize({ minHeight: this.compact ? 44 : undefined })
+      .onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/ExtensionManagerPage' }))
+  }
+
   build() {
-    Column({ space: 16 }) {
+    Column({ space: this.compact ? 8 : 16 }) {
       Row({ space: 10 }) {
-        Text('浏览').fontSize(28).fontWeight(FontWeight.Bold).layoutWeight(1)
-        Button('全局搜索').fontSize(13).onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/SearchPage' }))
-        Button('源规则').fontSize(13).backgroundColor($r('app.color.theme_466948')).onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/RuleManagerPage' }))
+        if (this.compact) {
+          Text('浏览').fontSize(26).fontWeight(FontWeight.Bold)
+          Text('漫画源').fontSize(14).fontColor($r('app.color.theme_697365')).layoutWeight(1)
+        } else {
+          Text('浏览').fontSize(28).fontWeight(FontWeight.Bold).layoutWeight(1)
+        }
+        Button('全局搜索').fontSize(13).constraintSize({ minHeight: this.compact ? 44 : undefined })
+          .onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/SearchPage' }))
+        Button('源规则').fontSize(13).constraintSize({ minHeight: this.compact ? 44 : undefined })
+          .backgroundColor($r('app.color.theme_466948')).onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/RuleManagerPage' }))
+        if (this.compact) { this.extensionsButton() }
       }.width('100%')
-      Row({ space: 12 }) { Text('漫画源').fontSize(18).fontWeight(FontWeight.Medium).layoutWeight(1); Button('扩展仓库').fontSize(13).onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/ExtensionManagerPage' })) }.width('100%')
+      if (!this.compact) {
+        Row({ space: 12 }) {
+          Text('漫画源').fontSize(18).fontWeight(FontWeight.Medium).layoutWeight(1)
+          this.extensionsButton()
+        }.width('100%')
+      }
       if (this.status) { Text(this.status).fontSize(13) }
       List({ space: 10 }) {
         ForEach(this.sources,(item: ManagedSource) => {
@@ -52,9 +72,13 @@ export struct BrowsePanel {
       }.width('100%').layoutWeight(1)
       if (this.sources.length === 0) { Text('尚无可浏览的源，请导入并启用源规则。').fontSize(14) }
       Row({ space: 10 }) {
-        Button('漫画源网站').fontSize(13).onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/SourcesPage' }))
-        Button('章节试读').fontSize(13).onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/ChapterReaderPage' }))
+        Button('漫画源网站').fontSize(13).constraintSize({ minHeight: this.compact ? 44 : undefined })
+          .onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/SourcesPage' }))
+        Button('章节试读').fontSize(13).constraintSize({ minHeight: this.compact ? 44 : undefined })
+          .onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/ChapterReaderPage' }))
       }
-    }.width('100%').height('100%').padding(20).backgroundColor($r('app.color.theme_f8faf5'))
+    }.width('100%').height('100%')
+      .padding({ left: 20, right: 20, top: this.compact ? 8 : 20, bottom: this.compact ? 8 : 20 })
+      .backgroundColor($r('app.color.theme_f8faf5'))
   }
 }

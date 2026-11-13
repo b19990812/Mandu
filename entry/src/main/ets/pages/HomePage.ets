@@ -3,12 +3,15 @@ import { LibraryPanel } from '../ui/LibraryPanel';
 import { HistoryPanel } from '../ui/HistoryPanel';
 import { BrowsePanel } from '../ui/BrowsePanel';
 import { UpdatesPanel } from '../ui/UpdatesPanel';
+import { MyComicBrowserHost } from '../ui/MyComicBrowserHost';
+import { isTabletLandscape } from '../ui/TabletLayout';
 
 @Entry
 @Component
 struct HomePage {
   @State private selected: number = 0;
   @State private revision: number = 0;
+  @State private compact: boolean = false;
   onPageShow(): void { this.revision++; }
   private open(page: string): void { this.getUIContext().getRouter().pushUrl({ url: 'pages/' + page }); }
   @Builder
@@ -27,12 +30,14 @@ struct HomePage {
     }.width('100%').padding(18).backgroundColor($r('app.color.theme_edf2e8')).borderRadius(14).onClick(() => this.open(page))
   }
   build() {
+    Stack() {
+      MyComicBrowserHost()
     Column() {
       Column() {
         if (this.selected === 0) { LibraryPanel({ revision: this.revision,onBrowse: () => { this.selected = 3; } }) }
         else if (this.selected === 1) { UpdatesPanel({ revision: this.revision }) }
-        else if (this.selected === 2) { HistoryPanel({ revision: this.revision }) }
-        else if (this.selected === 3) { BrowsePanel({ revision: this.revision }) }
+        else if (this.selected === 2) { HistoryPanel({ revision: this.revision, compact: this.compact }) }
+        else if (this.selected === 3) { BrowsePanel({ revision: this.revision, compact: this.compact }) }
         else {
           Scroll() {
             Column({ space: 14 }) {
@@ -57,5 +62,7 @@ struct HomePage {
         this.tab(4,'更多','•••')
       }.width('100%').height(68).backgroundColor($r('app.color.theme_e9f0e3')).padding({ left: 4,right: 4 })
     }.width('100%').height('100%').backgroundColor($r('app.color.theme_f8faf5'))
+    }.width('100%').height('100%')
+      .onAreaChange((_old: Area, area: Area) => { this.compact = isTabletLandscape(area); })
   }
 }

@@ -1,4 +1,5 @@
 import { SourceSiteDefinition } from '../model/SourceSiteTypes';
+import { EHENTAI_BASE, EHENTAI_ID } from '../network/EhentaiAccess';
 
 // Identity is independent of hostnames. Native adapters still depend on the site's availability.
 export function sourceSiteDefinitions(): SourceSiteDefinition[] {
@@ -16,6 +17,8 @@ export function sourceSiteDefinitions(): SourceSiteDefinition[] {
     { sourceId: 'org.hsmihon.vomic',name: 'Vomic 漫画',defaultBaseUrl: 'https://vomicmh.com/' },
     { sourceId: 'org.hsmihon.manhuagui',name: '漫画柜',defaultBaseUrl: 'https://www.manhuagui.com/' },
     { sourceId: 'org.hsmihon.manhuaku',name: '漫画库',defaultBaseUrl: 'https://www.manhuaku.com.cn/' },
-    { sourceId: 'org.hsmihon.joyacg',name: 'JoyACG 漫画',defaultBaseUrl: 'https://joyacg.cc/' }
+    { sourceId: 'org.hsmihon.mycomic',name: 'MYCOMIC 我的漫画',defaultBaseUrl: 'https://mycomic.com/' },
+    { sourceId: 'org.hsmihon.joyacg',name: 'JoyACG 漫画',defaultBaseUrl: 'https://joyacg.cc/' },
+    { sourceId: EHENTAI_ID,name: 'E-Hentai（18+）',defaultBaseUrl: EHENTAI_BASE }
   ];
 }

@@ -3,14 +3,15 @@ import { util } from '@kit.ArkTS';
 import * as renderer from 'libpagecurl.so';
 
 // No PixelMap is copied through @Prop, and no image is decoded by a gesture.
-// The native worker copies pixels once; the EGL thread owns all GPU resources.
+// The native worker reads one upload buffer; the EGL thread owns GPU resources.
 export class CurlGpuBridge {
   readonly id: string = 'curl-' + util.generateRandomUUID();
   private loaded: boolean = false;
   private keys: string[] = [];
   private resident: Set<string> = new Set();
   private jobs: Map<string,Promise<boolean>> = new Map();
-  attach(): void { this.loaded = true; renderer.retain(this.id,this.keys.join('|')); }
+  private priority: string = '';
+  attach(): void { this.loaded = true; renderer.retain(this.id,this.keys.join('|')); renderer.prioritize(this.id,this.priority); }
   detach(): void { this.loaded = false; this.resident.clear(); }
   retain(keys: string[]): void {
     this.keys = keys.slice();
@@ -18,6 +19,10 @@ export class CurlGpuBridge {
     if (this.loaded) { renderer.retain(this.id,keys.join('|')); }
   }
   ready(key: string): boolean { return this.loaded && this.resident.has(key); }
+  prioritize(keys: string[]): void {
+    const priority = keys.join('|'); if (priority === this.priority) { return; }
+    this.priority = priority; if (this.loaded) { renderer.prioritize(this.id,priority); }
+  }
   async cache(key: string,map: image.PixelMap): Promise<boolean> {
     if (!this.loaded || this.keys.indexOf(key) < 0) { return false; }
     if (this.resident.has(key)) { return true; }

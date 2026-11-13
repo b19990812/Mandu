@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.hsmihon.reader",
     "vendor": "HS Mihon",
-    "versionCode": 28,
-    "versionName": "0.9.10",
+    "versionCode": 42,
+    "versionName": "0.9.24",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

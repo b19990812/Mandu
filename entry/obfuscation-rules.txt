@@ -28,6 +28,7 @@ trialToken
 # Native NAPI exports are literal C++ property names and form a shared ABI.
 cache
 retain
+prioritize
 clear
 present
 presented

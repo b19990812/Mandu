@@ -1,7 +1,7 @@
-export const READER_MODES: string[] = ['paged','vertical','webtoon','continuous','spread','tap','curl'];
+export const READER_MODES: string[] = ['paged','vertical','webtoon','continuous','spread','tap','curl','scroll'];
 export interface ReaderDisplay { background: string; scale: string; tapZones: string; invertTap: boolean; }
 export function defaultReaderDisplay(): ReaderDisplay { return { background: 'dark',scale: 'auto',tapZones: 'sides',invertTap: false }; }
-export function stripMode(mode: string): boolean { return mode === 'webtoon' || mode === 'continuous'; }
+export function stripMode(mode: string): boolean { return mode === 'webtoon' || mode === 'continuous' || mode === 'scroll'; }
 export function validDisplay(value: ReaderDisplay): boolean { return ['dark','gray','light'].indexOf(value.background) >= 0 && ['auto','width','height'].indexOf(value.scale) >= 0 && ['sides','thirds','menu'].indexOf(value.tapZones) >= 0 && typeof value.invertTap === 'boolean'; }
 export function readerBackground(value: string): string { return value === 'light' ? '#F5F3EF' : value === 'gray' ? '#555555' : '#101515'; }
 // Logical previous/next remains independent of manga direction; inversion is an explicit preference.

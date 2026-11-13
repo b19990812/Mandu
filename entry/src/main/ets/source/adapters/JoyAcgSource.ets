@@ -10,6 +10,7 @@ import { SelectorSubset } from '../rules/SelectorSubset';
 import { SiteJsonClient } from './SiteJsonClient';
 import { refreshPage } from '../RefreshPage';
 import { checkCall } from '../SourceHttp';
+import { SourceCatalog, SourceCatalogSnapshot } from '../../model/SourceTypes';
 
 export const JOY_IMAGE_HOSTS: string[] = ['supercdn.site'];
 export const JOY_COVER_HOSTS: string[] = ['i0.wp.com','supercdn.site'];
@@ -17,6 +18,7 @@ interface JoyBook { root: HtmlNode; detail: MangaDetail; pages: PageRef[]; }
 export class JoyAcgSource implements Source,SourceDiscovery {
   readonly id: string = 'org.hsmihon.joyacg'; readonly version: number = 1;
   readonly discovery: SourceDiscovery = this;
+  readonly catalog: SourceCatalog = this;
   readonly feeds: SourceFeed[] = [{ id: 'latest',title: '最新漫画' },{ id: 'popular',title: '热门漫画' }];
   private readonly client: SiteJsonClient; private readonly select: SelectorSubset = new SelectorSubset();
   private readonly sites: UrlPolicy; private readonly images: UrlPolicy = new UrlPolicy(JOY_IMAGE_HOSTS); private readonly covers: UrlPolicy = new UrlPolicy(JOY_COVER_HOSTS);
@@ -93,6 +95,11 @@ export class JoyAcgSource implements Source,SourceDiscovery {
     return { root: root,detail: { ref: ref,title: title,cover: cover,authors: [],description: '',tags: tags,status: 'unknown' },pages: pages };
   }
   async details(ref: SourceRef,ctx: CallContext): Promise<MangaDetail> { return (await this.book(this.check(ref),ctx)).detail; }
+  async loadCatalog(ref: SourceRef,ctx: CallContext): Promise<SourceCatalogSnapshot> {
+    const book = await this.book(this.check(ref),ctx);
+    return { detail: book.detail,chapters: [{ ref: { sourceId: this.id,remoteId: ref.remoteId + '/book',locator: ref.locator },
+      mangaRemoteId: ref.remoteId,title: '整本 · ' + book.pages.length.toString() + ' 页',ordinal: 0 }] };
+  }
   async chapters(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<ChapterRef>> {
     this.check(ref); if (token) { throw new AppError(ErrorCode.RULE_INVALID,'JoyACG整本书不分页目录'); } const book = await this.book(ref,ctx);
     return { items: [{ ref: { sourceId: this.id,remoteId: ref.remoteId + '/book',locator: ref.locator },mangaRemoteId: ref.remoteId,title: '整本 · ' + book.pages.length.toString() + ' 页',ordinal: 0 }] };

@@ -10,10 +10,12 @@ import { SelectorSubset } from '../rules/SelectorSubset';
 import { checkCall, requireHttpSuccess } from '../SourceHttp';
 import { BaoziChapterSource, baoziPageHosts } from './BaoziChapterSource';
 import { BaoziDiscovery } from '../discovery/BaoziDiscovery';
+import { SourceCatalog, SourceCatalogSnapshot } from '../../model/SourceTypes';
 
 export const BAOZI_COVER_HOSTS: string[] = ['static-tw.baozimh.com'];
 export class BaoziSource extends BaoziChapterSource implements Source {
   readonly discovery: BaoziDiscovery;
+  readonly catalog: SourceCatalog = this;
   private readonly currentSite: SourceSiteAccess;
   private readonly http: Transport;
   private readonly policy: UrlPolicy;
@@ -67,13 +69,24 @@ export class BaoziSource extends BaoziChapterSource implements Source {
   async details(manga: SourceRef,ctx: CallContext): Promise<MangaDetail> {
     if (manga.sourceId !== this.id) { throw new AppError(ErrorCode.RULE_INVALID,'漫画不属于包子源'); }
     const ref = this.mangaRef(manga.locator); if (ref.remoteId !== manga.remoteId) { throw new AppError(ErrorCode.CONTENT_CHANGED,'漫画地址与标识不一致'); }
-    const root = await this.document(ref.locator,ctx); this.canonical(root,ref); const author = this.text(root,'h2.comics-detail__author');
+    return this.detailFrom(await this.document(ref.locator,ctx),ref);
+  }
+  private detailFrom(root: HtmlNode,ref: SourceRef): MangaDetail {
+    this.canonical(root,ref); const author = this.text(root,'h2.comics-detail__author');
     return { ref: ref,title: this.text(root,'h1.comics-detail__title',true),description: this.text(root,'p.comics-detail__desc'),authors: author ? [author] : [],tags: [],status: 'unknown',cover: this.cover(this.select.select(root,'div.comics-detail')[0] || root) };
   }
   async chapters(manga: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<ChapterRef>> {
     if (token || manga.sourceId !== this.id) { throw new AppError(ErrorCode.RULE_INVALID,'包子目录参数无效'); }
     const ref = this.mangaRef(manga.locator); if (ref.remoteId !== manga.remoteId) { throw new AppError(ErrorCode.CONTENT_CHANGED,'包子漫画身份与目录地址不一致'); }
-    const root = await this.document(ref.locator,ctx); const canonical = this.canonical(root,manga); const links = this.select.select(root,'a.comics-chapters__item');
+    return { items: this.chaptersFrom(await this.document(ref.locator,ctx),manga) };
+  }
+  async loadCatalog(manga: SourceRef,ctx: CallContext): Promise<SourceCatalogSnapshot> {
+    if (manga.sourceId !== this.id) { throw new AppError(ErrorCode.RULE_INVALID,'漫画不属于包子源'); }
+    const ref = this.mangaRef(manga.locator); if (ref.remoteId !== manga.remoteId) { throw new AppError(ErrorCode.CONTENT_CHANGED,'包子漫画身份与目录地址不一致'); }
+    const root = await this.document(ref.locator,ctx); return { detail: this.detailFrom(root,ref),chapters: this.chaptersFrom(root,manga) };
+  }
+  private chaptersFrom(root: HtmlNode,manga: SourceRef): ChapterRef[] {
+    const canonical = this.canonical(root,manga); const links = this.select.select(root,'a.comics-chapters__item');
     if (links.length === 0) { throw new AppError(ErrorCode.EMPTY_UNEXPECTED,'包子目录未返回章节，旧目录保留'); }
     const items: ChapterRef[] = [];
     links.forEach((link: HtmlNode) => {
@@ -84,6 +97,6 @@ export class BaoziSource extends BaoziChapterSource implements Source {
       if (!items.some((item: ChapterRef) => item.ref.remoteId === ref.remoteId)) { items.push({ ref: ref,mangaRemoteId: manga.remoteId,title: link.textContent().replace(/\s+/g,' ').trim(),ordinal: Number(section) * 1000000 + Number(slot) }); }
     });
     if (items.length > 10000) { throw new AppError(ErrorCode.RESPONSE_TOO_LARGE,'包子目录超过10000章'); }
-    return { items: items };
+    return items;
   }
 }

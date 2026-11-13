@@ -61,6 +61,7 @@ export struct WebtoonViewer {
     }
   }
   private continueAtEnd(): void {
+    if (this.vm.mode === 'scroll') { return; }
     if (this.visible && this.ready && !this.restoring && this.bottomReached && this.endArmed && this.zoom <= 1 && !this.vm.chapterChanging && !this.vm.busy) {
       this.endArmed = false; this.vm.continueChapter();
     }
@@ -87,6 +88,10 @@ export struct WebtoonViewer {
     const top = item.tile * TileDecoder.BLOCK_HEIGHT + Math.max(0, -rect.y) * item.width / this.viewportWidth;
     this.vm.stripPosition(item.page, Math.min(1, top / item.height));
   }
+  private scrollFrame(offset: number,state: ScrollState): number {
+    // Direct manipulation keeps the release position, without a fling or page snap.
+    return this.vm.mode === 'scroll' && state === ScrollState.Fling ? 0 : offset;
+  }
   build() {
     Scroll(this.horizontal) {
     List({ scroller: this.controller }) {
@@ -95,14 +100,17 @@ export struct WebtoonViewer {
       }, (item: StripItem) => this.vm.readerEpoch.toString() + ':' + item.page.toString() + ':' + item.tile.toString() + ':' + item.generation.toString())
       ListItem() {
         if (!this.vm.nextId) { Text('已到最后一章').fontColor('#CBD8D4').padding(24) }
-        else if (!this.vm.autoNext) { Button('进入下一章').onClick(() => this.vm.changeChapter(this.vm.nextId,true)) }
+        else if (!this.vm.autoNext || this.vm.mode === 'scroll') { Button('进入下一章').onClick(() => this.vm.changeChapter(this.vm.nextId,true)) }
         else { Row().height(1) }
       }
     }.width(this.contentWidth).height(this.canvasHeight).cachedCount(0).edgeEffect(EdgeEffect.None).scrollBar(BarState.Off)
+      .onScrollFrameBegin((offset: number,state: ScrollState) => ({ offsetRemain: this.scrollFrame(offset,state) }))
       .onScrollIndex((start: number) => { this.first = start; this.savePosition(); })
       .onReachEnd(() => { this.bottomReached = true; this.continueAtEnd(); })
       .onDidScroll(() => { this.savePosition(); this.bottomReached = this.controller.isAtEnd(); this.continueAtEnd(); })
-    }.width('100%').height('100%').scrollable(ScrollDirection.Horizontal).edgeEffect(EdgeEffect.None).scrollBar(BarState.Off)
+      .onScrollStop(() => this.savePosition())
+    }.width('100%').height('100%').scrollable(this.zoom > 1 ? ScrollDirection.Horizontal : ScrollDirection.None).edgeEffect(EdgeEffect.None).scrollBar(BarState.Off)
+      .onScrollFrameBegin((offset: number,state: ScrollState) => ({ offsetRemain: this.scrollFrame(offset,state) }))
       .scale({ x: this.preview,y: this.preview }).clip(true).backgroundColor(readerBackground(this.vm.background))
       .onAreaChange((_old: Area,area: Area) => {
         const width = Number(area.width); const height = Number(area.height);

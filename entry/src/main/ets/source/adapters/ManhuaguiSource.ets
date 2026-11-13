@@ -11,12 +11,14 @@ import { checkCall, requireHttpSuccess } from '../SourceHttp';
 import { refreshPage } from '../RefreshPage';
 import { guiHtmlList, guiHtmlDetail, guiHtmlChapters, checkGuiRef } from './ManhuaguiHtmlFormat';
 import { manhuaguiPages } from './ManhuaguiReaderData';
+import { SourceCatalog, SourceCatalogSnapshot } from '../../model/SourceTypes';
 
 const USER_AGENT: string = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
 export class ManhuaguiSource implements Source,SourceDiscovery {
   readonly id: string = 'org.hsmihon.manhuagui'; readonly version: number = 2;
   readonly discovery: SourceDiscovery = this;
+  readonly catalog: SourceCatalog = this;
   readonly feeds: SourceFeed[] = [{ id: 'popular',title: '热门' },{ id: 'updates',title: '更新' },{ id: 'latest',title: '新上架' },{ id: 'completed',title: '完结' }];
   private readonly site: SourceSiteAccess;
   private readonly transport: Transport;
@@ -68,6 +70,10 @@ export class ManhuaguiSource implements Source,SourceDiscovery {
   }
   async details(ref: SourceRef,ctx: CallContext): Promise<MangaDetail> {
     checkGuiRef(ref); const root = new HtmlExtractor().parse(await this.read(ref.locator,ctx)); return guiHtmlDetail(root,ref,this.site.baseUrl);
+  }
+  async loadCatalog(ref: SourceRef,ctx: CallContext): Promise<SourceCatalogSnapshot> {
+    checkGuiRef(ref); const root = new HtmlExtractor().parse(await this.read(ref.locator,ctx));
+    return { detail: guiHtmlDetail(root,ref,this.site.baseUrl),chapters: guiHtmlChapters(root,ref,this.site.baseUrl) };
   }
   async chapters(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<ChapterRef>> {
     checkGuiRef(ref); if (token) { throw new AppError(ErrorCode.RULE_INVALID,'漫画柜目录不接受分页标记'); }

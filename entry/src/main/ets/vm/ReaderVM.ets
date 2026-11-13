@@ -1,9 +1,10 @@
+import { ReaderPerf } from '../diagnostic/ReaderPerf';
 import { TileWarmCache } from '../image/TileWarmCache';
 import { common } from '@kit.AbilityKit';
 import { AppContainer } from '../app/AppContainer';
 import { BookSession } from '../business/ReaderService';
 import { ReaderAsset } from '../image/ReaderAssetCache';
-import { CallContext } from '../model/RequestTypes';
+import { CallContext, NetworkPriority } from '../model/RequestTypes';
 import { CancelScope } from '../model/CancelScope';
 import { ViewOperation, viewError } from './ViewOperation';
 import { StripModel } from '../reader/StripModel';
@@ -17,6 +18,7 @@ import { ReaderPreloader } from '../reader/ReaderPreloader';
 import { DEFAULT_PREFETCH_PAGES } from '../model/ReaderPreferences';
 import { ChapterAhead } from '../reader/ChapterAhead';
 import { NetworkPolicy } from '../network/NetworkPolicy';
+import { EHENTAI_ID } from '../network/EhentaiAccess';
 import { defaultReaderDisplay, ReaderDisplay, READER_MODES, stripMode, validDisplay } from '../model/ReaderDisplay';
 import { ChapterPageSource, PageRef, SourceRef } from '../model/SourceTypes';
 
@@ -119,11 +121,13 @@ export class ReaderVM {
       if (this.trialMode) {
         if (!this.trial) { this.trial = TrialReaderSessions.take(this.trialToken); }
         const trial = this.trial;
+        if (ReaderPerf.enabled && trial.source.id.startsWith('org.example.demo.')) { this.mode = ReaderPerf.mode; this.direction = 'ltr'; this.incognito = true; this.prefetchEnabled = true; this.prefetchWifi = false; }
+        else { ReaderPerf.enabled = false; }
         this.sourceId = this.websiteSource(trial.source.id);
         this.reading = { source: trial.source,chapter: trial.manifest.chapter,pages: trial.manifest.pages,cache: trial.cache,offline: false,partialOffline: false };
         const position = await this.app.trialPositions.read(trial.manifest.chapter,trial.manifest.pages);
         if (!this.operation.active(ctx)) { return; }
-        this.title = trial.manifest.label; this.total = trial.manifest.pages.length; this.index = position.index; this.ratio = position.ratio; this.asset = undefined;
+        this.title = trial.manifest.label; this.total = trial.manifest.pages.length; this.index = ReaderPerf.enabled ? 0 : position.index; this.ratio = ReaderPerf.enabled ? 0 : position.ratio; this.asset = undefined;
         this.loadedPages.clear(); this.strip.reset(this.total); opened = true;
       } else {
       const prepared = await this.ahead?.take(this.chapterId);
@@ -147,11 +151,13 @@ export class ReaderVM {
     if (!this.reading || !this.app || !this.active || this.chapterChanging || index < 0 || index >= this.total) { return; }
     if (this.usesPager()) {
       if (this.pagerMoving) { return; }
+      this.prioritizePage(index);
       this.pagerTarget = index; this.pagerRevision++; this.busy = false;
       if (!this.asset) { this.status = '正在准备可显示的页面…'; }
       return;
     }
     const session = this.reading; const ctx = this.operation.begin(60000, session.source?.version || 0);
+    ctx.priority = { value: NetworkPriority.Visible };
     this.busy = true; this.status = '正在读取图像…';
     this.turnDirection = (index < this.index ? -1 : 1) * (this.mode !== 'vertical' && this.direction === 'rtl' ? -1 : 1);
     const displayIndex = this.mode === 'spread' ? Math.floor(index / 2) * 2 : index;
@@ -181,19 +187,27 @@ export class ReaderVM {
     }
     if (!this.prefetch) {
       this.prefetch = new ReaderPreloader(async (page: number,scope: CancelScope) => {
-        await session.cache.load(session.source,session.chapter,session.pages[page],{ callId: 'reader-prefetch',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: session.source?.version || 0 });
+        await session.cache.load(session.source,session.chapter,session.pages[page],{ callId: 'reader-prefetch',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: session.source?.version || 0,priority: { value: NetworkPriority.Prefetch } });
       });
     }
     if (!this.usesPager() && !this.renderAhead) {
       this.renderAhead = new ReaderPreloader(async (page: number, scope: CancelScope) => {
-        const asset = await session.cache.load(session.source,session.chapter,session.pages[page],{ callId: 'reader-prerender-asset',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: session.source?.version || 0 });
+        const asset = await session.cache.load(session.source,session.chapter,session.pages[page],{ callId: 'reader-prerender-asset',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: session.source?.version || 0,priority: { value: NetworkPriority.Near } });
         await TileWarmCache.page(asset,scope);
       });
     }
     this.renderAhead?.update(index,this.mode === 'spread' ? 2 : 1,this.total,2);
-    this.prefetchIndex = index; this.prefetch.update(index,this.mode === 'spread' ? 2 : 1,this.total,this.prefetchPages);
+    const count = !session.offline && session.chapter.sourceId === EHENTAI_ID ? Math.min(2,this.prefetchPages) : this.prefetchPages;
+    this.prefetchIndex = index; this.prefetch.update(index,this.mode === 'spread' ? 2 : 1,this.total,count);
   }
-  async pagerAsset(index: number, scope: CancelScope): Promise<ReaderAsset> { return this.stripAsset(index,scope); }
+  prioritizePage(index: number): void {
+    const span = this.mode === 'spread' ? 2 : 1; const first = Math.floor(index / span) * span;
+    for (let page = first; page < first + span; page++) { this.reading?.cache.prioritize?.(page); }
+  }
+  async pagerAsset(index: number, scope: CancelScope): Promise<ReaderAsset> {
+    const span = this.mode === 'spread' ? 2 : 1;
+    return this.stripAsset(index,scope,Math.floor(index / span) !== Math.floor(this.pagerTarget / span));
+  }
   async allowPagerPrefetch(): Promise<boolean> {
     if (!this.active || !this.prefetchEnabled) { return false; }
     return !this.prefetchWifi || this.reading?.offline === true || await NetworkPolicy.allowed(true);
@@ -218,10 +232,10 @@ export class ReaderVM {
     this.saveTimer = setTimeout(() => { this.save(); }, 300);
     if (this.maxSaveTimer < 0) { this.maxSaveTimer = setTimeout(() => { this.maxSaveTimer = -1; this.save(); }, 1500); }
   }
-  async stripAsset(index: number, scope: CancelScope): Promise<ReaderAsset> {
+  async stripAsset(index: number, scope: CancelScope,background: boolean = false): Promise<ReaderAsset> {
     const session = this.reading; if (!this.active || !session || !session.pages[index]) { throw new AppError(ErrorCode.CANCELLED, '章节已关闭'); }
     try {
-      const asset = await session.cache.load(session.source, session.chapter, session.pages[index], { callId: 'strip-' + index.toString(), deadlineMs: Date.now() + 60000, cancel: scope, ruleRevision: session.source?.version || 0 });
+      const asset = await session.cache.load(session.source, session.chapter, session.pages[index], { callId: 'strip-' + index.toString(), deadlineMs: Date.now() + 60000, cancel: scope, ruleRevision: session.source?.version || 0,priority: { value: background ? NetworkPriority.Near : NetworkPriority.Visible } });
       if (scope.cancelled || this.reading !== session || !this.active) { throw new AppError(ErrorCode.CANCELLED, '章节已关闭'); }
       this.loadedPages.add(index); return asset;
     } catch (error) { if (!scope.cancelled && this.reading === session) { this.loadedPages.delete(index); } throw error as Error; }

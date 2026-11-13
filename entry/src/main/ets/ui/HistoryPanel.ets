@@ -11,6 +11,7 @@ export struct HistoryPanel {
   aboutToAppear(): void { this.vm.initialize(this.getUIContext().getHostContext() as common.UIAbilityContext); }
   aboutToDisappear(): void { this.vm.dispose(); }
   @Prop @Watch('reload') revision: number = 0;
+  @Prop compact: boolean = false;
   private reload(): void { this.vm.initialize(this.getUIContext().getHostContext() as common.UIAbilityContext); }
   private async remove(range: string,mangaId: string = '',title: string = ''): Promise<void> {
     const plan = await this.vm.prepareRemoval(range,mangaId); if (!plan) { return; }
@@ -19,8 +20,22 @@ export struct HistoryPanel {
       message: label + '：将删除 ' + plan.targets.length.toString() + ' 部漫画的历史记录。阅读进度、收藏、书签和下载会保留。',
       primaryButton: { value: '取消',action: () => {} },secondaryButton: { value: '删除历史',action: () => this.vm.applyRemoval(plan) } });
   }
+  @Builder
+  private recordActions(item: HistoryRecord) {
+    Row({ space: this.compact ? 8 : 12 }) {
+      Button('继续阅读').constraintSize({ minHeight: this.compact ? 44 : undefined })
+        .enabled(!this.vm.busy).onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/ReaderPage', params: { chapterId: item.progress.chapterId } }))
+      Button('删除历史').constraintSize({ minHeight: this.compact ? 44 : undefined })
+        .enabled(!this.vm.busy).onClick(() => this.remove('all',item.manga.id,item.manga.detail.title))
+    }
+  }
+
+  private pageLabel(item: HistoryRecord): string {
+    return '图像' + (item.progress.pageIndex + 1).toString() + (item.progress.completed ? ' · 已读完' : '');
+  }
+
   build() {
-    Column({ space: 12 }) {
+    Column({ space: this.compact ? 8 : 12 }) {
       Row({ space: 12 }) {
         Text('阅读历史').fontSize(26).fontWeight(FontWeight.Bold).fontColor($r('app.color.theme_254e50')).layoutWeight(1)
         Button(this.bulk ? '收起管理' : '批量删除').fontSize(13).enabled(!this.vm.busy).onClick(() => { this.bulk = !this.bulk; })
@@ -36,22 +51,35 @@ export struct HistoryPanel {
         Text('按最近阅读时间筛选，仅删除历史列表记录。').fontSize(12).fontColor($r('app.color.theme_697365'))
       }
       Text(this.vm.status).fontSize(14).width('100%')
-      List({ space: 12 }) {
+      List({ space: this.compact ? 6 : 12 }) {
         LazyForEach(this.vm.data, (item: HistoryRecord) => {
           ListItem() {
-            Column({ space: 10 }) {
-              Text(item.manga.detail.title).fontSize(20).fontWeight(FontWeight.Medium)
-              Text(item.chapterTitle + ' · 图像' + (item.progress.pageIndex + 1).toString() + (item.progress.completed ? ' · 已读完' : '')).fontSize(14)
-              Text(new Date(item.progress.updatedAt).toLocaleString()).fontSize(12).fontColor($r('app.color.theme_697365'))
-              Row({ space: 12 }) {
-                Button('继续阅读').enabled(!this.vm.busy).onClick(() => this.getUIContext().getRouter().pushUrl({ url: 'pages/ReaderPage', params: { chapterId: item.progress.chapterId } }))
-                Button('删除历史').enabled(!this.vm.busy).onClick(() => this.remove('all',item.manga.id,item.manga.detail.title))
-              }
-            }.width('100%').padding(16).alignItems(HorizontalAlign.Start).backgroundColor($r('app.color.theme_ffffff'))
+            if (this.compact) {
+              Row({ space: 16 }) {
+                Text(item.manga.detail.title).fontSize(18).fontWeight(FontWeight.Medium)
+                  .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).wordBreak(WordBreak.BREAK_WORD).layoutWeight(5)
+                Column({ space: 2 }) {
+                  Text(item.chapterTitle).fontSize(14).maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis }).wordBreak(WordBreak.BREAK_WORD)
+                  Text(this.pageLabel(item)).fontSize(12).fontColor($r('app.color.theme_697365'))
+                }.layoutWeight(4).alignItems(HorizontalAlign.Start)
+                Text(new Date(item.progress.updatedAt).toLocaleString()).fontSize(12).fontColor($r('app.color.theme_697365'))
+                this.recordActions(item)
+              }.width('100%').padding({ left: 12, right: 12, top: 5, bottom: 5 }).backgroundColor($r('app.color.theme_ffffff'))
+            } else {
+              Column({ space: 10 }) {
+                Text(item.manga.detail.title).fontSize(20).fontWeight(FontWeight.Medium)
+                Text(item.chapterTitle + ' · ' + this.pageLabel(item)).fontSize(14)
+                Text(new Date(item.progress.updatedAt).toLocaleString()).fontSize(12).fontColor($r('app.color.theme_697365'))
+                this.recordActions(item)
+              }.width('100%').padding(16).alignItems(HorizontalAlign.Start).backgroundColor($r('app.color.theme_ffffff'))
+            }
           }
         }, (item: HistoryRecord) => item.manga.id + ':' + item.progress.chapterId + ':' + item.progress.updatedAt.toString())
       }.layoutWeight(1).width('100%')
-    }.width('100%').height('100%').padding(20).alignItems(HorizontalAlign.Start).backgroundColor($r('app.color.theme_f8faf5'))
+    }.width('100%').height('100%')
+      .padding({ left: 20, right: 20, top: this.compact ? 10 : 20, bottom: this.compact ? 10 : 20 })
+      .alignItems(HorizontalAlign.Start).backgroundColor($r('app.color.theme_f8faf5'))
   }
 }
 

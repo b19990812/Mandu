@@ -6,6 +6,7 @@ import { NetworkPolicy } from '../network/NetworkPolicy';
 import { CallContext } from '../model/RequestTypes';
 import { checkCall } from '../source/SourceHttp';
 import { ChapterRecord } from '../model/LibraryTypes';
+import { EHENTAI_ID } from '../network/EhentaiAccess';
 
 export class LibraryUpdateService {
   private static running: boolean = false;
@@ -23,7 +24,7 @@ export class LibraryUpdateService {
       checkCall(ctx);
       const chapter = await this.catalog.chapter(ids[i]);
       const book = chapter ? await this.catalog.manga(chapter.mangaId) : undefined;
-      if (!chapter || !chapter.active || !book?.favorite) { await this.policy.clearPending(ids[i]); continue; }
+      if (!chapter || !chapter.active || chapter.ref.sourceId === EHENTAI_ID || !book?.favorite) { await this.policy.clearPending(ids[i]); continue; }
       try { await this.downloads.enqueue(ids[i]); await this.policy.clearPending(ids[i]); } catch (_) { failures++; }
     }
     return failures;
@@ -46,7 +47,8 @@ export class LibraryUpdateService {
         try {
           const before = await this.catalog.chapters(books[i].id);
           const known: Set<string> = new Set(before.map((chapter: ChapterRecord) => chapter.id));
-          await this.service.refresh(books[i].id,{ callId: ctx.callId,deadlineMs: Math.min(ctx.deadlineMs,Date.now() + 60000),cancel: ctx.cancel,ruleRevision: 1 },policy.autoDownload);
+          await this.service.refresh(books[i].id,{ callId: ctx.callId,deadlineMs: Math.min(ctx.deadlineMs,Date.now() + 60000),cancel: ctx.cancel,ruleRevision: 1 },
+            policy.autoDownload && books[i].detail.ref.sourceId !== EHENTAI_ID);
           checkCall(ctx); checked++;
           const fresh = (await this.catalog.chapters(books[i].id)).filter((chapter: ChapterRecord) => chapter.active && !known.has(chapter.id));
           added += fresh.length;

@@ -10,11 +10,13 @@ import { refreshPage } from '../RefreshPage';
 import { CopyApiClient } from './CopyApiClient';
 import { copyValue, copyObject, copyInteger, copyTitle, copyChapter, checkCopyRef, copySummary, copyDetail, copyPages, COPY_API_IMAGE_HOSTS } from './CopyApiFormat';
 import { CopyApiDiscovery } from '../discovery/CopyApiDiscovery';
+import { SourceCatalog, SourceCatalogSnapshot } from '../../model/SourceTypes';
 
 interface IndexedChapter { chapter: ChapterRef; index: number; }
 export class CopyApiSource implements Source {
   readonly id: string = 'org.hsmihon.copy';
   readonly version: number = 2;
+  readonly catalog: SourceCatalog = this;
   readonly discovery: CopyApiDiscovery;
   private readonly client: CopyApiClient;
   private readonly images: UrlPolicy = new UrlPolicy(COPY_API_IMAGE_HOSTS);
@@ -36,6 +38,14 @@ export class CopyApiSource implements Source {
     const ref = checkCopyRef(manga);
     if (token) { throw new AppError(ErrorCode.RULE_INVALID,'COPY API目录由适配器完整分页，不接受外部分页标记'); }
     const detail = await this.client.get('/comic2/' + ref.remoteId,ctx); copyDetail(detail,ref);
+    return { items: await this.chapterItems(ref,detail,ctx) };
+  }
+  async loadCatalog(manga: SourceRef,ctx: CallContext): Promise<SourceCatalogSnapshot> {
+    const ref = checkCopyRef(manga); const node = await this.client.get('/comic2/' + ref.remoteId,ctx);
+    const detail = copyDetail(node,ref);
+    return { detail: detail,chapters: await this.chapterItems(ref,node,ctx) };
+  }
+  private async chapterItems(ref: SourceRef,detail: JsonNode,ctx: CallContext): Promise<ChapterRef[]> {
     const groups = copyObject(detail,'groups');
     if (groups.members.size < 1 || groups.members.size > 100) { throw new AppError(ErrorCode.PARSE_ERROR,'COPY API章节分组数量无效'); }
     const items: ChapterRef[] = []; const seen: Set<string> = new Set(); const groupIds: Set<string> = new Set();
@@ -67,7 +77,7 @@ export class CopyApiSource implements Source {
       collected.forEach((item: IndexedChapter) => { item.chapter.ordinal = items.length; items.push(item.chapter); });
     }
     if (!items.length) { throw new AppError(ErrorCode.EMPTY_UNEXPECTED,'COPY API没有返回可确认的完整目录'); }
-    return { items: items };
+    return items;
   }
   async pages(chapter: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<PageRef>> {
     const ref = checkCopyRef(chapter,true);

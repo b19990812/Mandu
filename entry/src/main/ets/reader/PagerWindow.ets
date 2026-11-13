@@ -1,5 +1,6 @@
 import { ReaderAsset } from '../image/ReaderAssetCache';
 import { CancelScope } from '../model/CancelScope';
+import { AppError, ErrorCode } from '../model/ErrorTypes';
 import { FilePins } from '../storage/FilePins';
 import { viewError } from '../vm/ViewOperation';
 
@@ -13,6 +14,7 @@ export class PagerSlot {
   paintRevision: number = 0;
   status: string = '正在准备图片…';
   failed: boolean = false;
+  errorCode?: ErrorCode;
   ratio: number = 0;
   companion: PagerSlot | undefined = undefined;
   readonly span: number;
@@ -66,7 +68,7 @@ export class PagerWindow {
   private async read(slot: PagerSlot): Promise<void> {
     const loader = this.loader; if (!loader) { return; }
     try { const asset = await loader(slot.index, slot.scope); if (!slot.scope.cancelled) { slot.accept(asset); } }
-    catch (error) { if (!slot.scope.cancelled) { slot.failed = true; slot.status = viewError(error as Error); this.onFailure(slot.index,slot.status); } }
+    catch (error) { if (!slot.scope.cancelled) { slot.failed = true; slot.errorCode = error instanceof AppError ? error.code : undefined; slot.status = viewError(error as Error); this.onFailure(slot.index,slot.status); } }
     if (!slot.scope.cancelled && this.page(slot.index) === slot) { this.onChange(slot.index); }
   }
   retry(index: number): void {
@@ -75,7 +77,7 @@ export class PagerWindow {
       const ratio = slot.ratio; const companionRatio = slot.companion?.ratio || 0;
       slot.dispose(); this.slots = this.slots.filter((item: PagerSlot) => item !== slot);
       const replacement = this.ensure(slot.index,ratio); if (replacement?.companion) { replacement.companion.ratio = companionRatio; }
-    } else { page.failed = false; page.status = '正在准备图片…'; this.onChange(page.index); this.read(page); }
+    } else { page.failed = false; page.errorCode = undefined; page.status = '正在准备图片…'; this.onChange(page.index); this.read(page); }
   }
   commit(index: number): boolean {
     const slot = this.find(index); if (!slot?.complete()) { return false; }

@@ -27,6 +27,11 @@ export interface SourceDiscovery {
   readonly feeds: SourceFeed[];
   browse(query: SourceBrowseQuery, token: PageToken | undefined, ctx: CallContext): Promise<SourceBrowseBatch>;
 }
+export interface SourceCatalogSnapshot { detail: MangaDetail; chapters: ChapterRef[]; }
+// Optional combined load: sources whose details and catalog share a response.
+export interface SourceCatalog {
+  loadCatalog(manga: SourceRef,ctx: CallContext): Promise<SourceCatalogSnapshot>;
+}
 export interface ChapterPageSource {
   id: string;
   version: number;
@@ -35,6 +40,7 @@ export interface ChapterPageSource {
 }
 export interface Source extends ChapterPageSource {
   discovery?: SourceDiscovery;
+  catalog?: SourceCatalog;
   search(query: string, token: PageToken | undefined, ctx: CallContext): Promise<SourceBatch<MangaSummary>>;
   details(manga: SourceRef, ctx: CallContext): Promise<MangaDetail>;
   chapters(manga: SourceRef, token: PageToken | undefined, ctx: CallContext): Promise<SourceBatch<ChapterRef>>;

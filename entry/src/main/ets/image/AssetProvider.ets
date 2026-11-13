@@ -7,4 +7,5 @@ export interface AssetProvider {
   forget(index: number): void;
   dispose(): void;
   park(): void;
+  prioritize?(index: number): void;
 }

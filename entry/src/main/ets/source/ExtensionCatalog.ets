@@ -2,16 +2,18 @@ import { url } from '@kit.ArkTS';
 import { JsonExtractor, JsonNode } from '../parsing/JsonExtractor';
 import { AppError, ErrorCode } from '../model/ErrorTypes';
 import { UrlPolicy } from '../network/UrlPolicy';
+import { EHENTAI_BASE, EHENTAI_ID } from '../network/EhentaiAccess';
 
 export const COPY20_REPOSITORY = 'https://raw.githubusercontent.com/LittleSurvival/copymanga-copy20/repo/index.min.json';
 export interface ExtensionEntry { pkg: string; externalId: string; name: string; version: string; code: number; lang: string; baseUrl: string; nsfw: boolean; nativeId: string; status: string; }
 export interface AdditionalSource { name: string; address: string; status: string; nativeId?: string; }
 export function additionalSources(): AdditionalSource[] {
   return [
+    { name: 'MYCOMIC 我的漫画',address: 'https://mycomic.com/cn/comics',status: '网页 HTML 与内嵌目录接入；Cloudflare 会话及设备阅读待确认',nativeId: 'org.hsmihon.mycomic' },
     { name: '漫画库',address: 'https://www.manhuaku.com.cn/',status: '目录与线路 API、原生页面数据混合接入；设备阅读待确认',nativeId: 'org.hsmihon.manhuaku' },
     { name: '漫画柜',address: 'https://www.manhuagui.com/',status: '网页 HTML 接入；设备阅读待确认',nativeId: 'org.hsmihon.manhuagui' },
     { name: 'JoyACG',address: 'https://joyacg.cc/',status: '已接入漫画列表、整本目录与页清单；设备阅读待确认',nativeId: 'org.hsmihon.joyacg' },
-    { name: 'E-Hentai',address: 'https://e-hentai.org/',status: '待适配：画廊分页、动态图片域名与下载限额尚未接入' }
+    { name: 'E-Hentai',address: EHENTAI_BASE,status: '18+ · 官方详情 API、网页搜索与在线阅读',nativeId: EHENTAI_ID }
   ];
 }
 export function repositoryAddress(raw: string): string {

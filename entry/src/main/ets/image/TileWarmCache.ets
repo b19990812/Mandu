@@ -23,7 +23,6 @@ export class TileWarmCache {
   }
   static async acquire(asset: ReaderAsset, tile: number, width: number, ctx: CallContext): Promise<DecodedTile> {
     const key = TileWarmCache.key(asset, tile, width);
-    const pending = TileWarmCache.pending.get(key); if (pending) { await pending; }
     checkCall(ctx);
     const map = TileWarmCache.maps.get(key);
     if (map) {
@@ -61,7 +60,7 @@ export class TileWarmCache {
       if (cancel.cancelled || TileDecoder.preloadBytes() >= TileDecoder.PRELOAD_LIMIT) { return; }
       const map = await new TileDecoder().decode(asset, tile, width,
         { callId: 'reader-prerender', deadlineMs: Date.now() + 30000, cancel: cancel, ruleRevision: 0 }, true);
-      if (cancel.cancelled || TileWarmCache.bytes + map.bytes > TileDecoder.PRELOAD_LIMIT || TileWarmCache.maps.size >= 6) { await map.release(); return; }
+      if (cancel.cancelled || !map.isSpeculative() || TileWarmCache.bytes + map.bytes > TileDecoder.PRELOAD_LIMIT || TileWarmCache.maps.size >= 6) { await map.release(); return; }
       TileWarmCache.maps.set(key, map); TileWarmCache.bytes += map.bytes;
     } catch (_) { /* Best effort; the visible path retains retry and error reporting. */ }
     finally { stop(); stopCaller(); unpin(); }

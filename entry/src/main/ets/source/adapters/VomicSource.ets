@@ -12,6 +12,7 @@ import { checkCall, requireHttpSuccess } from '../SourceHttp';
 import { refreshPage } from '../RefreshPage';
 import { VomicFormat } from './VomicFormat';
 import { filterValue, validateBrowse } from '../discovery/DiscoverySupport';
+import { SourceCatalog, SourceCatalogSnapshot } from '../../model/SourceTypes';
 
 export const VOMIC_HOSTS: string[] = ['api.vomicmh.com','cdm.vomicer.com'];
 const VOMIC_IMAGES: string[] = ['cdm.vomicer.com'];
@@ -19,6 +20,7 @@ const VOMIC_IMAGES: string[] = ['cdm.vomicer.com'];
 export class VomicSource implements Source, SourceDiscovery {
   readonly id: string = 'org.hsmihon.vomic'; readonly version: number = 1;
   readonly discovery: SourceDiscovery = this;
+  readonly catalog: SourceCatalog = this;
   readonly feeds: SourceFeed[] = [{ id: 'home',title: '首页' },{ id: 'updates',title: '最近更新' },{ id: 'category',title: '分类' },{ id: 'completed',title: '完结' }];
   private categories: SourceFilterChoice[] = [{ value: '',title: '全部' }];
   private readonly site: SourceSiteAccess; private readonly transport: Transport;
@@ -121,12 +123,21 @@ export class VomicSource implements Source, SourceDiscovery {
     if (node.kind !== 'object' || this.scalar(node,'id') !== ref.remoteId) { throw new AppError(ErrorCode.CONTENT_CHANGED,'Vomic返回了其他作品的元数据'); } return node;
   }
   async details(ref: SourceRef,ctx: CallContext): Promise<MangaDetail> {
-    const data = await this.info(ref,ctx); const author = this.scalar(data,'author'); const process = this.scalar(data,'process');
+    return this.detailFrom(ref,await this.info(ref,ctx));
+  }
+  private detailFrom(ref: SourceRef,data: JsonNode): MangaDetail {
+    const author = this.scalar(data,'author'); const process = this.scalar(data,'process');
     return { ref: ref,title: this.title(data),authors: author ? [author] : [],description: this.scalar(data,'intro'),tags: this.scalar(data,'tags').split(/\s+/).filter((tag: string) => tag !== ''),status: process === '已完结' ? 'completed' : process === '连载中' ? 'ongoing' : 'unknown',cover: this.cover(this.scalar(data,'cover')) };
   }
   async chapters(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<ChapterRef>> {
     if (token) { throw new AppError(ErrorCode.RULE_INVALID,'Vomic目录不接受分页标记'); }
-    const data = await this.info(ref,ctx); const groups = data.members.get('chapter_list'); const expected = Number(this.scalar(data,'chapter_num'));
+    return { items: this.chaptersFrom(ref,await this.info(ref,ctx)) };
+  }
+  async loadCatalog(ref: SourceRef,ctx: CallContext): Promise<SourceCatalogSnapshot> {
+    const data = await this.info(ref,ctx); return { detail: this.detailFrom(ref,data),chapters: this.chaptersFrom(ref,data) };
+  }
+  private chaptersFrom(ref: SourceRef,data: JsonNode): ChapterRef[] {
+    const groups = data.members.get('chapter_list'); const expected = Number(this.scalar(data,'chapter_num'));
     if (!groups || groups.kind !== 'array' || groups.items.length > 100 || !Number.isSafeInteger(expected) || expected < 1 || expected > 10000) { throw new AppError(ErrorCode.EMPTY_UNEXPECTED,'Vomic目录为空或结构改变，保留旧目录'); }
     const items: ChapterRef[] = []; const seen: Set<string> = new Set();
     groups.items.forEach((group: JsonNode) => {
@@ -142,7 +153,7 @@ export class VomicSource implements Source, SourceDiscovery {
       ordered.forEach((chapter: ChapterRef) => { chapter.ordinal = items.length; items.push(chapter); });
     });
     if (items.length !== expected) { throw new AppError(ErrorCode.CONTENT_CHANGED,'Vomic章节总数不符，保留旧目录'); }
-    return { items: items };
+    return items;
   }
   async pages(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<PageRef>> {
     const parts = this.checkChapter(ref); if (token) { throw new AppError(ErrorCode.RULE_INVALID,'Vomic清单不接受分页标记'); }

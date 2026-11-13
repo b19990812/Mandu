@@ -8,10 +8,12 @@ import { checkCall } from '../SourceHttp';
 import { refreshPage } from '../RefreshPage';
 import { ManhuakuClient } from './ManhuakuClient';
 import { kuList, kuDetail, kuChapters, kuPages, kuManga, checkKuRef, kuImageSource } from './ManhuakuFormat';
+import { SourceCatalog, SourceCatalogSnapshot } from '../../model/SourceTypes';
 
 export class ManhuakuSource implements Source,SourceDiscovery {
   readonly id: string = 'org.hsmihon.manhuaku'; readonly version: number = 1;
   readonly discovery: SourceDiscovery = this;
+  readonly catalog: SourceCatalog = this;
   readonly feeds: SourceFeed[] = [{ id: 'category',title: '分类' },{ id: 'updates',title: '更新' },{ id: 'completed',title: '完结' }];
   private readonly client: ManhuakuClient;
   constructor(site: SourceSiteAccess,transport: Transport) { this.client = new ManhuakuClient(site,transport); }
@@ -42,10 +44,15 @@ export class ManhuakuSource implements Source,SourceDiscovery {
   async details(ref: SourceRef,ctx: CallContext): Promise<MangaDetail> {
     checkKuRef(ref); return kuDetail(await this.client.text(ref.locator,ctx),ref,this.client.site.baseUrl).detail;
   }
+  async loadCatalog(ref: SourceRef,ctx: CallContext): Promise<SourceCatalogSnapshot> {
+    checkKuRef(ref); const parsed = kuDetail(await this.client.text(ref.locator,ctx),ref,this.client.site.baseUrl);
+    const chapters = kuChapters(await this.client.data('/comic/' + ref.remoteId,true,ctx,true),ref,parsed);
+    return { detail: parsed.detail,chapters: chapters.map((item) => item.chapter) };
+  }
   async chapters(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<ChapterRef>> {
     checkKuRef(ref); if (token) { throw new AppError(ErrorCode.RULE_INVALID,'漫画库目录由 API 一次完整读取'); }
     const detail = kuDetail(await this.client.text(ref.locator,ctx),ref,this.client.site.baseUrl);
-    return { items: kuChapters(await this.client.data('/comic/' + ref.remoteId,true,ctx),ref,detail).map((item) => item.chapter) };
+    return { items: kuChapters(await this.client.data('/comic/' + ref.remoteId,true,ctx,true),ref,detail).map((item) => item.chapter) };
   }
   async pages(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<PageRef>> {
     const parts = checkKuRef(ref,true); if (token) { throw new AppError(ErrorCode.RULE_INVALID,'漫画库图片清单不接受分页标记'); }
@@ -58,7 +65,7 @@ export class ManhuakuSource implements Source,SourceDiscovery {
   }
   async resolveImage(ref: SourceRef,page: PageRef,refresh: boolean,ctx: CallContext): Promise<ImageRequest> {
     checkKuRef(ref,true); checkCall(ctx);
-    if (refresh) { return this.resolveImage(ref,await refreshPage(this,ref,page.pageKey,ctx),false,ctx); }
+    if (refresh) { this.client.invalidate(); return this.resolveImage(ref,await refreshPage(this,ref,page.pageKey,ctx),false,ctx); }
     if (!page.imageUrl) { throw new AppError(ErrorCode.RULE_INVALID,'漫画库图片地址缺失'); }
     const address = new UrlPolicy([]).validate(page.imageUrl);
     if (page.pageKey !== address.pathname || page.locator !== page.pageKey || !/^\/mh\/[^/]+\/[^/]+\/[1-9][0-9]*\.webp$/.test(address.pathname)) { throw new AppError(ErrorCode.CONTENT_CHANGED,'漫画库图片身份与地址不符'); }

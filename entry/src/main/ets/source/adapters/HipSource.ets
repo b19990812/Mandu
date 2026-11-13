@@ -12,11 +12,13 @@ import { checkCall, requireHttpSuccess } from '../SourceHttp';
 import { refreshPage } from '../RefreshPage';
 import { HipFormat } from './HipFormat';
 import { HipChapterId } from './HipChapterId';
+import { SourceCatalog, SourceCatalogSnapshot } from '../../model/SourceTypes';
 
 export const HIP_HOSTS: string[] = ['reader.hipmh.top','hipapi1.s3file.top','cover.s3imgs.top','hip-tx-1.s3imgs.top','hip-cf-1.s3imgs.top','hip-tx-s1.s3imgs.top','hip-cf-s1.s3imgs.top'];
 export class HipSource implements Source, SourceDiscovery {
   readonly id: string = 'org.hsmihon.hipmh'; readonly version: number = 2;
   readonly discovery: SourceDiscovery = this;
+  readonly catalog: SourceCatalog = this;
   readonly feeds: SourceFeed[] = [{ id: 'home',title: '首页' }];
   private readonly site: SourceSiteAccess; private readonly transport: Transport;
   private readonly policy: UrlPolicy; private readonly sitePolicy: UrlPolicy;
@@ -87,13 +89,23 @@ export class HipSource implements Source, SourceDiscovery {
     return { items: batch.items.map((item: MangaSummary): SourceBrowseItem => ({ manga: item,subtitle: '' })),filters: [] };
   }
   async details(ref: SourceRef,ctx: CallContext): Promise<MangaDetail> {
-    this.check(ref); const root = new HtmlExtractor().parse(await this.get(ref.locator,ctx)); const title = this.text(root,'h1');
+    this.check(ref); return this.detailFrom(ref,new HtmlExtractor().parse(await this.get(ref.locator,ctx)));
+  }
+  private detailFrom(ref: SourceRef,root: HtmlNode): MangaDetail {
+    const title = this.text(root,'h1');
     if (!title || title.length > 1024) { throw new AppError(ErrorCode.PARSE_ERROR,'HIP详情结构不符'); }
     return { ref: ref,title: title,authors: [],description: this.select.select(root,'meta[name="description"]')[0]?.attribute('content') || '',tags: [],status: 'unknown',cover: this.cover(root) };
   }
   async chapters(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<ChapterRef>> {
     this.check(ref); if (token) { throw new AppError(ErrorCode.RULE_INVALID,'HIP目录使用完整分页读取'); }
-    const root = new HtmlExtractor().parse(await this.get(ref.locator,ctx)); const config = this.select.select(root,'#chapters-config')[0];
+    return { items: await this.chapterItems(ref,new HtmlExtractor().parse(await this.get(ref.locator,ctx)),ctx) };
+  }
+  async loadCatalog(ref: SourceRef,ctx: CallContext): Promise<SourceCatalogSnapshot> {
+    this.check(ref); const root = new HtmlExtractor().parse(await this.get(ref.locator,ctx));
+    return { detail: this.detailFrom(ref,root),chapters: await this.chapterItems(ref,root,ctx) };
+  }
+  private async chapterItems(ref: SourceRef,root: HtmlNode,ctx: CallContext): Promise<ChapterRef[]> {
+    const config = this.select.select(root,'#chapters-config')[0];
     const mid = config?.attribute('data-manga-id') || ''; const expected = Number(config?.attribute('data-total-chapters'));
     if (!/^\d{1,12}$/.test(mid) || !Number.isSafeInteger(expected) || expected < 1 || expected > 10000) { throw new AppError(ErrorCode.PARSE_ERROR,'HIP目录元数据不符'); }
     const items: ChapterRef[] = []; const seen: Set<string> = new Set(); let totalPages = 1;
@@ -105,7 +117,7 @@ export class HipSource implements Source, SourceDiscovery {
       list.items.forEach((node: JsonNode) => { const hid = this.value(node,'hid'); const title = this.value(node,'title'); if (!/^[A-Za-z0-9_-]{1,512}$/.test(hid) || !title || title.length > 1024 || seen.has(hid)) { throw new AppError(ErrorCode.PARSE_ERROR,'HIP章节重复或字段无效'); } seen.add(hid);
         items.push({ ref: { sourceId: this.id,remoteId: ref.remoteId + '/' + hid,locator: 'https://reader.hipmh.top/chapter/' + hid },mangaRemoteId: ref.remoteId,title: title,ordinal: items.length }); });
     }
-    if (items.length !== expected) { throw new AppError(ErrorCode.CONTENT_CHANGED,'HIP章节总数不符，保留旧目录'); } return { items: items };
+    if (items.length !== expected) { throw new AppError(ErrorCode.CONTENT_CHANGED,'HIP章节总数不符，保留旧目录'); } return items;
   }
   async pages(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<PageRef>> {
     const hid = this.chapterCheck(ref); if (token) { throw new AppError(ErrorCode.RULE_INVALID,'HIP图片清单不接受额外分页'); }

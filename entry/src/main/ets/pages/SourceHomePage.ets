@@ -74,7 +74,7 @@ struct SourceHomePage {
               Text(item.manga.title).fontSize(14).fontWeight(FontWeight.Medium).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
               if (item.subtitle) { Text(item.subtitle).fontSize(11).fontColor($r('app.color.theme_697365')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%') }
             }.width('100%').alignItems(HorizontalAlign.Start)
-          }.onClick(() => this.open(item)).enabled(!this.vm.busy && !this.vm.opening)
+          }.onClick(() => this.open(item)).enabled((!this.vm.busy || this.vm.count > 0) && !this.vm.opening)
         },(item: SourceBrowseItem) => item.manga.ref.sourceId + ':' + item.manga.ref.remoteId + ':' + (item.manga.cover || ''))
       }.columnsTemplate('1fr '.repeat(discoveryColumns(this.viewportWidth - 40)).trim()).columnsGap(12).rowsGap(16).width('100%').layoutWeight(1).cachedCount(1)
       if (this.vm.supported && this.vm.hasNext) { Button('加载更多').fontSize(14).enabled(!this.vm.busy && !this.vm.opening).onClick(() => this.vm.load(true)) }

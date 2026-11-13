@@ -17,7 +17,7 @@ struct SettingsPage {
         Text('应用主题').fontSize(18)
         Select([{ value: '跟随系统' },{ value: '浅色' },{ value: '深色' }]).selected(['system','light','dark'].indexOf(this.vm.theme)).value(['跟随系统','浅色','深色'][['system','light','dark'].indexOf(this.vm.theme)]).onSelect((index: number) => this.vm.setTheme(['system','light','dark'][index]))
         Text('默认阅读方式').fontSize(18)
-        Select([{ value: '水平滑动' },{ value: '纵向单页' },{ value: '无缝条漫' },{ value: '间隔连续' },{ value: '双页仿真卷页' },{ value: '点击单页' },{ value: '单页仿真卷页' }]).selected(READER_MODES.indexOf(this.vm.mode)).value(['水平滑动','纵向单页','无缝条漫','间隔连续','双页仿真卷页','点击单页','单页仿真卷页'][READER_MODES.indexOf(this.vm.mode)]).onSelect((index: number) => { if (index >= 0 && index < READER_MODES.length) { this.vm.mode = READER_MODES[index]; } })
+        Select([{ value: '水平滑动' },{ value: '纵向单页' },{ value: '无缝条漫' },{ value: '间隔连续' },{ value: '双页仿真卷页' },{ value: '点击单页' },{ value: '单页仿真卷页' },{ value: '连续滑动（无缝）' }]).selected(READER_MODES.indexOf(this.vm.mode)).value(['水平滑动','纵向单页','无缝条漫','间隔连续','双页仿真卷页','点击单页','单页仿真卷页','连续滑动（无缝）'][READER_MODES.indexOf(this.vm.mode)]).onSelect((index: number) => { if (index >= 0 && index < READER_MODES.length) { this.vm.mode = READER_MODES[index]; } })
         Text('页式阅读方向').fontSize(18)
         Select([{ value: '从左到右' },{ value: '从右到左' }]).selected(this.vm.direction === 'ltr' ? 0 : 1).value(this.vm.direction === 'ltr' ? '从左到右' : '从右到左').onSelect((index: number) => { if (index === 0 || index === 1) { this.vm.direction = index === 0 ? 'ltr' : 'rtl'; } })
         Text('阅读背景与适配（条漫固定适合宽度）').fontSize(18)

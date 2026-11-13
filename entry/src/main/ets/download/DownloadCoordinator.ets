@@ -20,6 +20,7 @@ import { FileVerifier, VerifiedImage } from './FileVerifier';
 import { ReaderPreferencesRepository } from '../storage/ReaderPreferencesRepository';
 import { ReaderDatabase } from '../storage/ReaderDatabase';
 import { NetworkPolicy } from '../network/NetworkPolicy';
+import { EHENTAI_ID } from '../network/EhentaiAccess';
 import { transferAsset } from '../image/AssetTransfer';
 import { BackgroundTransferLease } from './BackgroundTransferLease';
 
@@ -73,6 +74,7 @@ export class DownloadCoordinator implements UpdateDownloads {
   async enqueue(chapterId: string): Promise<void> {
     await this.start(); const chapter = await this.catalog.chapter(chapterId);
     if (!chapter) { throw new AppError(ErrorCode.NOT_FOUND, '章节不存在'); }
+    if (chapter.ref.sourceId === EHENTAI_ID) { throw new AppError(ErrorCode.UNSUPPORTED,'E-Hentai 暂未开放离线下载'); }
     const handle = await this.registry.open(chapter.ref.sourceId);
     await this.records.enqueue(chapter, handle.snapshotKey); await this.pump();
   }

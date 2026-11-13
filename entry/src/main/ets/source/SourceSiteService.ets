@@ -6,6 +6,7 @@ import { SourceSiteAddress } from './SourceSiteAddress';
 import { sourceSiteDefinitions } from './SourceSiteCatalog';
 import { SourceChanges } from './SourceChanges';
 import { copyProtocol, copyApiBase } from './CopyAccess';
+import { EHENTAI_BASE, EHENTAI_ID } from '../network/EhentaiAccess';
 
 export class SourceSiteService {
   private readonly store: SourceSiteSettingsStore;
@@ -64,6 +65,9 @@ export class SourceSiteService {
 
   async save(sourceId: string, input: string, expectedRevision: number, protocol?: string, apiBaseUrl?: string): Promise<void> {
     const normalized = this.address.normalize(input);
+    if (sourceId === EHENTAI_ID && normalized !== EHENTAI_BASE) {
+      throw new AppError(ErrorCode.POLICY_DENIED,'E-Hentai 使用公开站点 e-hentai.org');
+    }
     const snapshot = await this.store.read();
     const previous = this.current(snapshot, sourceId);
     if (previous.revision !== expectedRevision) {

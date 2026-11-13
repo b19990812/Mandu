@@ -14,4 +14,5 @@ export class HybridAssetProvider implements AssetProvider {
   forget(index: number): void { this.online.forget(index); this.offline.forget(index); }
   dispose(): void { this.offline.dispose(); this.online.dispose(); }
   park(): void { this.offline.park(); this.online.park(); }
+  prioritize(index: number): void { this.online.prioritize?.(index); }
 }

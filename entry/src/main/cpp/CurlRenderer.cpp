@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <condition_variable>
 #include <deque>
 #include <memory>
@@ -29,7 +30,12 @@ struct Texture { GLuint id = 0; size_t bytes = 0; };
 struct Upload {
     std::string key;
     uint32_t width = 0, height = 0;
+    uint32_t rowPixels = 0;
+    bool bgra = false;
+    size_t rowCopyBytes = 0;
     std::vector<uint8_t> pixels;
+    double readMs = 0, convertMs = 0;
+    std::chrono::steady_clock::time_point queued;
     std::mutex mutex;
     std::condition_variable signal;
     bool done = false, ok = false;
@@ -62,11 +68,20 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex);
             if (!alive || failed || allowed.count(job->key) == 0) { return false; }
-            uploads.push_back(job); dirty = true;
+            job->queued = std::chrono::steady_clock::now(); uploads.push_back(job); dirty = true;
         }
         wake.notify_all();
         std::unique_lock<std::mutex> lock(job->mutex);
-        return job->signal.wait_for(lock,std::chrono::seconds(5),[&]() { return job->done; }) && job->ok;
+        const bool ok=job->signal.wait_for(lock,std::chrono::seconds(5),[&]() { return job->done; }) && job->ok;
+        lock.unlock();
+        if (!ok) {
+            // A long held gesture can defer prewarm beyond its wait budget.
+            // Drop a still-queued job instead of uploading an abandoned buffer.
+            std::lock_guard<std::mutex> queueLock(mutex);
+            auto pending=std::find(uploads.begin(),uploads.end(),job);
+            if (pending!=uploads.end()) { uploads.erase(pending); }
+        }
+        return ok;
     }
     void Retain(const std::string& text) {
         std::lock_guard<std::mutex> lock(mutex);
@@ -77,6 +92,16 @@ public:
             if (end == std::string::npos) { break; } start = end+1;
         }
         dirty = true; wake.notify_all();
+    }
+    void Prioritize(const std::string& text) {
+        std::lock_guard<std::mutex> lock(mutex);
+        priority.clear(); size_t start=0;
+        while (start<text.size()) {
+            size_t end=text.find('|',start);
+            priority.push_back(text.substr(start,end==std::string::npos ? end : end-start));
+            if (end==std::string::npos) { break; } start=end+1;
+        }
+        wake.notify_all();
     }
     uint64_t Present(Frame next) {
         std::lock_guard<std::mutex> lock(mutex);
@@ -92,7 +117,12 @@ public:
         std::lock_guard<std::mutex> lock(mutex);
         return std::string(failed ? "failed" : "ok") + ";frames=" + std::to_string(frames) +
             ";mesh=" + std::to_string(columns) + "x" + std::to_string(rows) +
-            ";gpuBytes=" + std::to_string(cacheBytes) + ";slowDraws=" + std::to_string(slowDraws);
+            ";gpuBytes=" + std::to_string(cacheBytes) + ";slowDraws=" + std::to_string(slowDraws) +
+            ";uploads=" + std::to_string(uploadCount) + ";readMs=" + std::to_string(readTotal) +
+            ";convertMs=" + std::to_string(convertTotal) + ";uploadMs=" + std::to_string(uploadTotal) +
+            ";rgbaUploads=" + std::to_string(rgbaUploads) + ";bgraUploads=" + std::to_string(bgraUploads) +
+            ";stridedUploads=" + std::to_string(stridedUploads) + ";rowCopyBytes=" + std::to_string(rowCopyBytes) +
+            ";uploadQueueMs=" + std::to_string(uploadQueueTotal) + ";width=" + std::to_string(width) + ";height=" + std::to_string(height);
     }
 private:
     void* window;
@@ -103,11 +133,15 @@ private:
     bool alive = true, failed = false, dirty = false, tick = false;
     Frame frame;
     std::deque<std::shared_ptr<Upload>> uploads;
+    std::vector<std::string> priority;
     std::set<std::string> allowed, resident;
     std::unordered_map<std::string,Texture> textures;
     std::atomic<uint64_t> presented {0};
     uint64_t submitted = 0, frames = 0, slowDraws = 0;
     size_t cacheBytes = 0;
+    uint64_t uploadCount = 0;
+    uint64_t rgbaUploads = 0, bgraUploads = 0, stridedUploads = 0, rowCopyBytes = 0;
+    double readTotal = 0, convertTotal = 0, uploadTotal = 0, uploadQueueTotal = 0;
     int columns = 160, rows = 96, indexCount = 0;
     EGLDisplay display = EGL_NO_DISPLAY;
     EGLContext context = EGL_NO_CONTEXT;
@@ -171,17 +205,23 @@ private:
     bool UploadTexture(const std::shared_ptr<Upload>& job) {
         if (textures.count(job->key)) { return true; }
         GLint maxSize; glGetIntegerv(GL_MAX_TEXTURE_SIZE,&maxSize);
+        const size_t textureBytes=static_cast<size_t>(job->width)*job->height*4;
         if (job->width > static_cast<uint32_t>(maxSize) || job->height > static_cast<uint32_t>(maxSize) ||
-            cacheBytes+job->pixels.size() > MAX_CACHE_BYTES) { return false; }
+            cacheBytes+textureBytes > MAX_CACHE_BYTES) { return false; }
         GLuint texture; glGenTextures(1,&texture); glBindTexture(GL_TEXTURE_2D,texture);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+        // ES 3 texture swizzles preserve BGRA without a CPU channel conversion.
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_SWIZZLE_R,job->bgra ? GL_BLUE : GL_RED);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_SWIZZLE_B,job->bgra ? GL_RED : GL_BLUE);
         glPixelStorei(GL_UNPACK_ALIGNMENT,1);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH,job->rowPixels);
         glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,job->width,job->height,0,GL_RGBA,GL_UNSIGNED_BYTE,job->pixels.data());
+        glPixelStorei(GL_UNPACK_ROW_LENGTH,0);
         if (glGetError()!=GL_NO_ERROR) { glDeleteTextures(1,&texture); return false; }
         std::lock_guard<std::mutex> lock(mutex);
         if (!alive || allowed.count(job->key)==0) { glDeleteTextures(1,&texture); return false; }
-        textures.emplace(job->key,Texture {texture,job->pixels.size()}); cacheBytes+=job->pixels.size();
+        textures.emplace(job->key,Texture {texture,textureBytes}); cacheBytes+=textureBytes;
         resident.insert(job->key); return true;
     }
     void Uniform(const char* name,float value) { glUniform1f(glGetUniformLocation(program,name),value); }
@@ -220,31 +260,44 @@ private:
         bool waiting=false;
         while (true) {
             Frame current; uint64_t w,h; bool shouldDraw=false;
+            std::shared_ptr<Upload> upload;
             {
                 std::unique_lock<std::mutex> lock(mutex);
-                wake.wait(lock,[&]() { return !alive || tick || !uploads.empty() || (dirty && !waiting); });
+                wake.wait(lock,[&]() { return !alive || tick || (!frame.visible && !uploads.empty()) || (dirty && !waiting); });
                 if (!alive) { break; }
                 for (auto it=textures.begin();it!=textures.end();) {
                     if (!allowed.count(it->first) && (!frame.visible || (it->first!=frame.front && it->first!=frame.behind))) {
                         glDeleteTextures(1,&it->second.id); cacheBytes-=it->second.bytes; resident.erase(it->first); it=textures.erase(it);
                     } else { ++it; }
                 }
-                while (!uploads.empty()) {
-                    auto job=uploads.front(); uploads.pop_front();
-                    const bool wanted=allowed.count(job->key)!=0;
-                    // A large glTexImage2D must not hold the command mutex:
-                    // finger updates on ArkUI's thread only publish parameters.
-                    lock.unlock();
-                    const bool uploaded=wanted && UploadTexture(job);
-                    job->Finish(uploaded);
-                    lock.lock();
-                }
                 if (dirty && !waiting) {
                     waiting = OH_NativeVSync_RequestFrame(vsync,Vsync,this)==0;
                     if (!waiting) { tick=true; }
                 }
                 if (tick) { tick=false; waiting=false; shouldDraw=dirty; dirty=false; current=frame; w=width; h=height; }
-                else { continue; }
+                // All textures used by an active curl were resident before Present.
+                // Do not start speculative glTexImage2D work while that curl owns
+                // the surface; a long upload cannot be preempted by a finger move.
+                else if (!frame.visible && !uploads.empty()) {
+                    const auto rank=[&](const std::shared_ptr<Upload>& job) { return std::find(priority.begin(),priority.end(),job->key)-priority.begin(); };
+                    auto best=std::min_element(uploads.begin(),uploads.end(),[&](const auto& a,const auto& b) { return rank(a)<rank(b); });
+                    upload=*best; uploads.erase(best);
+                    if (!allowed.count(upload->key)) { upload->Finish(false); upload.reset(); }
+                }
+            }
+            if (upload) {
+                const auto began=std::chrono::steady_clock::now();
+                const double queueMs=std::chrono::duration<double,std::milli>(began-upload->queued).count();
+                const bool uploaded=UploadTexture(upload);
+                const double uploadMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-began).count();
+                upload->Finish(uploaded);
+                if (uploaded) {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    uploadCount++; readTotal+=upload->readMs; convertTotal+=upload->convertMs; uploadTotal+=uploadMs; uploadQueueTotal+=queueMs;
+                    if (upload->bgra) { bgraUploads++; } else { rgbaUploads++; }
+                    if (upload->rowPixels>upload->width) { stridedUploads++; } rowCopyBytes+=upload->rowCopyBytes;
+                }
+                continue;
             }
             if (!shouldDraw) { continue; }
             auto started=std::chrono::steady_clock::now();
@@ -326,13 +379,24 @@ void CacheExecute(napi_env,void* data) {
     if (!valid || !job->upload->width || !job->upload->height || stride<job->upload->width*4 ||
         static_cast<size_t>(job->upload->width)*job->upload->height>MAX_TEXTURE_PIXELS ||
         bytes>MAX_TEXTURE_BYTES || (format!=PIXEL_FORMAT_RGBA_8888 && format!=PIXEL_FORMAT_BGRA_8888)) return;
+    const auto readBegan=std::chrono::steady_clock::now();
     std::vector<uint8_t> source(bytes);
     if (OH_PixelmapNative_ReadPixels(job->map,source.data(),&bytes)!=IMAGE_SUCCESS) return;
-    job->upload->pixels.resize(static_cast<size_t>(job->upload->width)*job->upload->height*4);
-    for(uint32_t y=0;y<job->upload->height;y++) for(uint32_t x=0;x<job->upload->width;x++) {
-        auto from=source.data()+y*stride+x*4; auto to=job->upload->pixels.data()+(static_cast<size_t>(y)*job->upload->width+x)*4;
-        to[0]=from[format==PIXEL_FORMAT_BGRA_8888 ? 2 : 0]; to[1]=from[1]; to[2]=from[format==PIXEL_FORMAT_BGRA_8888 ? 0 : 2]; to[3]=from[3];
+    if (bytes<static_cast<size_t>(stride)*(job->upload->height-1)+job->upload->width*4) return;
+    job->upload->readMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-readBegan).count();
+    const auto convertBegan=std::chrono::steady_clock::now();
+    job->upload->bgra=format==PIXEL_FORMAT_BGRA_8888;
+    job->upload->rowPixels=stride/4;
+    // GL can consume the original row stride directly when it is pixel-aligned.
+    // Rare byte-aligned padding is compacted in-place, never into a second image.
+    if (stride%4) {
+        const size_t rowBytes=static_cast<size_t>(job->upload->width)*4;
+        for(uint32_t y=1;y<job->upload->height;y++) { std::memmove(source.data()+y*rowBytes,source.data()+static_cast<size_t>(y)*stride,rowBytes); }
+        job->upload->rowCopyBytes=rowBytes*(job->upload->height-1);
+        source.resize(rowBytes*job->upload->height); job->upload->rowPixels=0;
     }
+    job->upload->pixels=std::move(source);
+    job->upload->convertMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-convertBegan).count();
     job->ok=job->renderer->Cache(job->upload);
 }
 void CacheComplete(napi_env env,napi_status,void* data) {
@@ -383,6 +447,7 @@ napi_value Control(napi_env env,napi_callback_info info) {
     if(op==2) { renderer->Clear(); }
     if(op==3) { return Bool(env,count==2 && renderer->Presented()>=Number(env,args[1])); }
     if(op==4) { napi_value out; auto value=renderer->Metrics(); napi_create_string_utf8(env,value.c_str(),value.size(),&out); return out; }
+    if(op==5 && count==2) { renderer->Prioritize(String(env,args[1])); }
     return Bool(env,true);
 }
 napi_value Init(napi_env env,napi_value exports) {
@@ -390,6 +455,7 @@ napi_value Init(napi_env env,napi_value exports) {
         {"cache",nullptr,Cache,nullptr,nullptr,nullptr,napi_default,nullptr},
         {"present",nullptr,Present,nullptr,nullptr,nullptr,napi_default,nullptr},
         {"retain",nullptr,Control,nullptr,nullptr,nullptr,napi_default,reinterpret_cast<void*>(1)},
+        {"prioritize",nullptr,Control,nullptr,nullptr,nullptr,napi_default,reinterpret_cast<void*>(5)},
         {"clear",nullptr,Control,nullptr,nullptr,nullptr,napi_default,reinterpret_cast<void*>(2)},
         {"presented",nullptr,Control,nullptr,nullptr,nullptr,napi_default,reinterpret_cast<void*>(3)},
         {"metrics",nullptr,Control,nullptr,nullptr,nullptr,napi_default,reinterpret_cast<void*>(4)}};
