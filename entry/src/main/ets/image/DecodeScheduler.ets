@@ -2,6 +2,7 @@ import { CallContext } from '../model/RequestTypes';
 import { AppError, ErrorCode } from '../model/ErrorTypes';
 import { checkCall } from '../source/SourceHttp';
 import { ReaderPerf } from '../diagnostic/ReaderPerf';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
 
 export class DecodeDemand {
   readonly uri: string;
@@ -45,7 +46,8 @@ export class DecodeScheduler {
   private static rank(item: DecodeWaiter): number { return item.demand.background ? 2 : DecodeScheduler.focused.indexOf(item.demand.uri) >= 0 ? 0 : 1; }
   private static remove(item: DecodeWaiter,error: Error): void {
     if (item.done) { return; } item.done = true; item.stop(); if (item.timer >= 0) { clearTimeout(item.timer); }
-    DecodeScheduler.queue = DecodeScheduler.queue.filter((entry: DecodeWaiter) => entry !== item); item.reject(error);
+    DecodeScheduler.queue = DecodeScheduler.queue.filter((entry: DecodeWaiter) => entry !== item);
+    ReaderTrace.record(item.ctx.trace,'decode-queue-wait',Date.now() - item.queuedAt,error instanceof AppError ? error.code : 'failed'); item.reject(error);
   }
   static acquire(ctx: CallContext,demand: DecodeDemand): Promise<() => void> {
     checkCall(ctx);
@@ -69,6 +71,7 @@ export class DecodeScheduler {
       DecodeScheduler.queue = DecodeScheduler.queue.filter((entry: DecodeWaiter) => entry !== item);
       const background = item.demand.background; DecodeScheduler.active++; if (background) { DecodeScheduler.preloads++; }
       DecodeScheduler.peak = Math.max(DecodeScheduler.peak,DecodeScheduler.active);
+      ReaderTrace.record(item.ctx.trace,'decode-queue-wait',Date.now() - item.queuedAt,'ok',background ? 'preload' : 'display');
       ReaderPerf.event('decode-queue',Date.now() - item.queuedAt,background ? 'preload' : DecodeScheduler.focused.indexOf(item.demand.uri) >= 0 ? 'visible' : 'display');
       let released = false;
       item.resolve(() => {

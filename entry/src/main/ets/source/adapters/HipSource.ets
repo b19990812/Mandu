@@ -106,18 +106,35 @@ export class HipSource implements Source, SourceDiscovery {
   }
   private async chapterItems(ref: SourceRef,root: HtmlNode,ctx: CallContext): Promise<ChapterRef[]> {
     const config = this.select.select(root,'#chapters-config')[0];
-    const mid = config?.attribute('data-manga-id') || ''; const expected = Number(config?.attribute('data-total-chapters'));
-    if (!/^\d{1,12}$/.test(mid) || !Number.isSafeInteger(expected) || expected < 1 || expected > 10000) { throw new AppError(ErrorCode.PARSE_ERROR,'HIP目录元数据不符'); }
-    const items: ChapterRef[] = []; const seen: Set<string> = new Set(); let totalPages = 1;
+    const mid = config?.attribute('data-manga-id') || '';
+    if (!/^\d{1,12}$/.test(mid)) { throw new AppError(ErrorCode.PARSE_ERROR,'HIP目录元数据不符'); }
+    const items: ChapterRef[] = [];
+    const seen: Set<string> = new Set();
+    let expectedTotal = 0;
+    let totalPages = 1;
     for (let page = 1; page <= totalPages; page++) {
       const result = new JsonExtractor().parse(await this.get('https://hipapi1.s3file.top/v1/manga/chapters?mid=' + mid + '&page=' + page.toString() + '&per_page=50&order=asc',ctx));
-      const data = result.members.get('data'); const list = data?.members.get('items');
-      if (this.value(result,'code') !== '200' || !data || !list || list.kind !== 'array' || list.items.length > 100 || Number(this.value(data,'page')) !== page || Number(this.value(data,'total')) !== expected) { throw new AppError(ErrorCode.CONTENT_CHANGED,'HIP目录分页不完整，请刷新'); }
-      const pages = Number(this.value(data,'total_pages')); if (!Number.isInteger(pages) || pages < page || pages > 200 || page > 1 && pages !== totalPages) { throw new AppError(ErrorCode.PARSE_ERROR,'HIP分页总数不符'); } totalPages = pages;
+      const data = result.members.get('data');
+      const list = data?.members.get('items');
+      if (this.value(result,'code') !== '200' || !data || !list || list.kind !== 'array' || list.items.length > 100 || Number(this.value(data,'page')) !== page) {
+        throw new AppError(ErrorCode.CONTENT_CHANGED,'HIP目录分页不完整，请刷新');
+      }
+      const total = Number(this.value(data,'total'));
+      const pages = Number(this.value(data,'total_pages'));
+      if (!Number.isSafeInteger(total) || total < 1 || total > 10000 || !Number.isInteger(pages) || pages < page || pages > 200) {
+        throw new AppError(ErrorCode.PARSE_ERROR,'HIP分页总数不符');
+      }
+      if (page === 1) {
+        expectedTotal = total;
+        totalPages = pages;
+      } else if (total !== expectedTotal || pages !== totalPages) {
+        throw new AppError(ErrorCode.CONTENT_CHANGED,'HIP目录分页不完整，请刷新');
+      }
       list.items.forEach((node: JsonNode) => { const hid = this.value(node,'hid'); const title = this.value(node,'title'); if (!/^[A-Za-z0-9_-]{1,512}$/.test(hid) || !title || title.length > 1024 || seen.has(hid)) { throw new AppError(ErrorCode.PARSE_ERROR,'HIP章节重复或字段无效'); } seen.add(hid);
         items.push({ ref: { sourceId: this.id,remoteId: ref.remoteId + '/' + hid,locator: 'https://reader.hipmh.top/chapter/' + hid },mangaRemoteId: ref.remoteId,title: title,ordinal: items.length }); });
     }
-    if (items.length !== expected) { throw new AppError(ErrorCode.CONTENT_CHANGED,'HIP章节总数不符，保留旧目录'); } return items;
+    if (items.length !== expectedTotal) { throw new AppError(ErrorCode.CONTENT_CHANGED,'HIP章节总数不符，保留旧目录'); }
+    return items;
   }
   async pages(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<PageRef>> {
     const hid = this.chapterCheck(ref); if (token) { throw new AppError(ErrorCode.RULE_INVALID,'HIP图片清单不接受额外分页'); }

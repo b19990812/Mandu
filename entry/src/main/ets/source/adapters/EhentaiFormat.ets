@@ -132,16 +132,3 @@ export function ehNextGalleryBatch(root: HtmlNode,locator: string,index: number)
     return address.toString() === EHENTAI_BASE + locator.substring(1) + '?p=' + index.toString();
   });
 }
-
-export function ehImageAddress(root: HtmlNode): string {
-  const images = select.select(root,'img#img[src]');
-  if (images.length !== 1) { throw new AppError(ErrorCode.PARSE_ERROR,'E-Hentai 图片页未返回可读图片'); }
-  const address = ehentaiAddress(new url.URL(images[0].attribute('src'),EHENTAI_BASE).toString(),true);
-  if (/\/(?:509|imglimit)\.gif$/i.test(address.pathname)) {
-    throw new AppError(ErrorCode.SOURCE_QUOTA,'E-Hentai 图片配额已用尽，请稍后重试');
-  }
-  if (address.pathname.startsWith('/om/') && address.pathname.indexOf('/x/0/') >= 0) {
-    throw new AppError(ErrorCode.ACCESS_DENIED,'E-Hentai 未向当前客户端提供可读取的图片，请在来源网站查看');
-  }
-  return address.toString();
-}

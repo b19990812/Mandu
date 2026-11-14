@@ -14,6 +14,7 @@ import { HybridAssetProvider } from '../image/HybridAssetProvider';
 import { DownloadRepository } from '../storage/DownloadRepository';
 import { FileStore } from '../storage/FileStore';
 import { ManifestCodec } from '../parsing/ManifestCodec';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
 
 export interface BookSession {
   chapter: ChapterRecord; mangaTitle: string; source: ChapterPageSource | undefined; pages: PageRef[];
@@ -47,8 +48,11 @@ export class ReaderService {
       if (offlineOnly) { throw new AppError(ErrorCode.OFFLINE, '该章节暂无可读离线图像'); }
       try {
         const handle = await this.registry.open(chapter.ref.sourceId); source = handle.source;
-        const call: CallContext = { callId: ctx.callId, deadlineMs: ctx.deadlineMs, cancel: ctx.cancel, ruleRevision: handle.source.version };
+        const call: CallContext = { callId: ctx.callId, deadlineMs: ctx.deadlineMs, cancel: ctx.cancel, ruleRevision: handle.source.version,
+          trace: ReaderTrace.withSource(ctx.trace,handle.source.id) };
+        const manifestStarted = Date.now();
         const manifest = await collectChapterManifest(handle.source, chapter.ref, call); pages = manifest.pages;
+        ReaderTrace.record(call.trace,'chapter-manifest',Date.now() - manifestStarted,'ok','',pages.length);
         const online = new ReaderAssetCache(this.cacheDir, handle.transport, 134217728, 33554432,handle.snapshotKey);
         if (snapshot && snapshot.task.ruleKey === handle.snapshotKey && snapshot.task.manifest === new ManifestCodec().encode(handle.snapshotKey, pages.map((page: PageRef) => page.pageKey))) {
           cache = new HybridAssetProvider(new OfflineAssetProvider(this.files, snapshot.pages), online, snapshot.pages.map((page) => page.pageKey));

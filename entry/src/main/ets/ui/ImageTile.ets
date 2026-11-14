@@ -7,6 +7,8 @@ import { viewError } from '../vm/ViewOperation';
 import { FilePins } from '../storage/FilePins';
 import { ReaderLifecycle } from '../reader/ReaderLifecycle';
 import { FrameCallback } from '@kit.ArkUI';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
+import { ReaderTraceContext } from '../model/RequestTypes';
 
 class TilePresented extends FrameCallback {
   private readonly complete: () => void;
@@ -19,6 +21,7 @@ export struct ImageTile {
   @Prop asset: ReaderAsset;
   @Prop index: number = 0;
   @Prop quality: number = 1;
+  @Prop traceKey: string = '';
   onDecoded: () => void = () => {};
   onReady: (ready: boolean) => void = () => {};
   onFailure: (message: string) => void = () => {};
@@ -35,6 +38,11 @@ export struct ImageTile {
   private lifecycle?: () => void;
   private retired: DecodedTile[] = [];
   private reportedGeneration: number = -1;
+  private loadStarted: number = 0;
+  private traceForTile(): ReaderTraceContext | undefined {
+    const base = ReaderTrace.resolve(this.traceKey);
+    return ReaderTrace.withPart(base,this.index + 1) || base;
+  }
   aboutToAppear(): void {
     this.lifecycle = ReaderLifecycle.subscribe((foreground: boolean) => this.applyReaderVisibility(foreground));
     this.applyReaderVisibility(ReaderLifecycle.isForeground);
@@ -60,24 +68,26 @@ export struct ImageTile {
       // A newer decode invalidates readiness, but must not cancel older retirement.
       this.releaseRetired(retired);
       if (!this.visible || generation !== this.generation) { return; }
+      ReaderTrace.record(this.traceForTile(),'tile-presented',Date.now() - this.loadStarted,'ready','',this.index + 1);
       this.onReady(true);
     }));
   }
   private async load(): Promise<void> {
     if (this.targetWidth <= 0) { return; }
-    const width = Math.max(1,Math.min(this.asset.width,2048,Math.round(this.targetWidth * this.quality)));
+    const width = Math.max(1,Math.min(this.asset.width,2048,Math.round(this.targetWidth * this.quality))); this.loadStarted = Date.now();
     const generation = ++this.generation; if (this.cancel) { this.cancel.cancel(); }
     this.failed = false; this.status = '正在解码…';
     if (this.lease && this.leaseWidth === width) { this.status = ''; this.presented(); return; }
     const cancel = new CancelScope(); this.cancel = cancel;
     try {
       const lease = await TileWarmCache.acquire(this.asset, this.index, width,
-        { callId: 'tile-' + generation.toString(), deadlineMs: Date.now() + 30000, cancel: cancel, ruleRevision: 1 });
+        { callId: 'tile-' + generation.toString(), deadlineMs: Date.now() + 30000, cancel: cancel, ruleRevision: 1,
+          trace: this.traceForTile() });
       if (!this.visible || generation !== this.generation || cancel.cancelled) { await lease.release(); return; }
       const old = this.lease; this.lease = lease; this.leaseWidth = width; this.pixel = lease.map;
       if (old) { this.retired.push(old); }
       this.status = ''; this.onDecoded();
-      TileWarmCache.warm(this.asset, this.index + 1, width, cancel);
+      TileWarmCache.warm(this.asset, this.index + 1, width, cancel,ReaderTrace.resolve(this.traceKey));
     } catch (error) { if (this.visible && generation === this.generation && !cancel.cancelled) { this.failed = true; this.status = viewError(error as Error); if (!this.pixel) { this.onFailure(this.status); } } }
   }
   build() {

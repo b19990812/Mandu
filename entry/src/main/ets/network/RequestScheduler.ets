@@ -60,7 +60,7 @@ export class RequestScheduler {
       RequestScheduler.queue.splice(index,1); item.unsubscribe(); clearTimeout(item.timer);
       RequestScheduler.active++; RequestScheduler.change(RequestScheduler.sources,item.source,1); RequestScheduler.change(RequestScheduler.hosts,item.host,1);
       if (background) { RequestScheduler.backgroundActive++; RequestScheduler.change(RequestScheduler.backgroundSources,item.source,1); RequestScheduler.change(RequestScheduler.backgroundHosts,item.host,1); }
-      NetworkPerf.stage(item.source,'queue-wait',item.queuedAt,requestPriority(item.ctx));
+      NetworkPerf.stage(item.source,'queue-wait',item.queuedAt,requestPriority(item.ctx),item.ctx.trace);
       let released = false;
       item.grant(() => {
         if (released) { return; } released = true; RequestScheduler.active--; RequestScheduler.change(RequestScheduler.sources,item.source,-1); RequestScheduler.change(RequestScheduler.hosts,item.host,-1);

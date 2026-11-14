@@ -26,6 +26,7 @@ import { ReaderPreferencesRepository } from '../storage/ReaderPreferencesReposit
 import { NativeSourceRegistry } from '../source/NativeSourceRegistry';
 import { ManagedSource } from '../source/SourceImportService';
 import { TrialPositionRepository } from '../storage/TrialPositionRepository';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
 
 // Production composition remains independent of the development laboratory.
 export class AppContainer {
@@ -50,6 +51,7 @@ export class AppContainer {
   readonly trialPositions: TrialPositionRepository;
 
   constructor(context: common.UIAbilityContext) {
+    ReaderTrace.initialize(context.filesDir);
     this.sourceSites = new SourceSiteService(new SourceSiteSettingsRepository(context));
     const packages = new SourceRepository(context);
     this.imports = new SourceImportService(packages);

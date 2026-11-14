@@ -5,14 +5,16 @@ import { FilePins } from '../storage/FilePins';
 class CanvasLayer {
   readonly asset: ReaderAsset;
   readonly ratio: number;
+  readonly traceKey: string;
   readonly release: () => void;
-  constructor(asset: ReaderAsset, ratio: number) { this.asset = asset; this.ratio = ratio; this.release = FilePins.pin(asset.uri.substring(7)); }
+  constructor(asset: ReaderAsset, ratio: number, traceKey: string) { this.asset = asset; this.ratio = ratio; this.traceKey = traceKey; this.release = FilePins.pin(asset.uri.substring(7)); }
 }
 
 // Legacy vertical/spread modes retain the old surface until the new viewport is rendered.
 @Component
 export struct RetainedCanvas {
   @Prop @Watch('changed') asset: ReaderAsset;
+  @Prop traceKey: string = '';
   @Prop zoom: number = 1;
   @Prop ratio: number = 0;
   @Prop backdrop: string = 'dark';
@@ -53,7 +55,7 @@ export struct RetainedCanvas {
     this.failure = '';
     const keep = this.layers.filter((layer: CanvasLayer) => layer.asset.uri === this.shown);
     this.layers.forEach((layer: CanvasLayer) => { if (keep.indexOf(layer) < 0) { layer.release(); } });
-    this.layers = keep.concat([new CanvasLayer(this.asset,this.ratio)]);
+    this.layers = keep.concat([new CanvasLayer(this.asset,this.ratio,this.traceKey)]);
     if (!this.shown) { this.shown = this.asset.uri; }
   }
   private ready(uri: string, ready: boolean): void {
@@ -77,7 +79,7 @@ export struct RetainedCanvas {
   build() {
     Stack() {
       ForEach(this.layers,(layer: CanvasLayer) => {
-        ReadingCanvas({ asset: layer.asset,ratio: layer.ratio,zoom: this.zoom,backdrop: this.backdrop,scaleMode: this.scaleMode,
+        ReadingCanvas({ asset: layer.asset,traceKey: layer.traceKey,ratio: layer.ratio,zoom: this.zoom,backdrop: this.backdrop,scaleMode: this.scaleMode,
           vertical: this.vertical,tapZones: this.tapZones,invertTap: this.invertTap,tapOffset: this.tapOffset,tapScale: this.tapScale,
           interactive: !this.animating && layer.asset.uri === this.shown && this.shown === this.asset.uri,
           onReady: (ready: boolean) => this.ready(layer.asset.uri,ready),

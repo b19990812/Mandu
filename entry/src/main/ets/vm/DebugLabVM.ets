@@ -5,11 +5,15 @@ import { CancelScope } from '../model/CancelScope';
 import { AppError } from '../model/ErrorTypes';
 import { CallContext } from '../network/Transport';
 import { archiveProbe } from '../diagnostic/ArchiveProbe';
+import { ReaderTrace, ReaderTraceEntry } from '../diagnostic/ReaderTrace';
 
 @Observed
 export class DebugLabVM {
   baseUrl: string = 'http://127.0.0.1:8765';
   status: string = '使用电脑局域网地址；127.0.0.1 仅在已配置端口转发时有效。';
+  traceQuery: string = '';
+  traceRows: ReaderTraceEntry[] = [];
+  traceTotal: number = 0;
   busy: boolean = false;
   private container?: FoundationLabContainer;
   private scope?: CancelScope;
@@ -20,6 +24,9 @@ export class DebugLabVM {
   initialize(context: common.UIAbilityContext): void {
     this.disposed = false;
     this.context = context;
+    ReaderTrace.initialize(context.filesDir);
+    ReaderTrace.loadPersisted();
+    this.searchReaderLogs();
     try { this.container = new FoundationLabContainer(context); }
     catch (_) {
       hilog.error(0x0001, 'HSReader', 'LAB_INIT_FAILED');
@@ -67,6 +74,12 @@ export class DebugLabVM {
   }
   writeStorage(): void { this.run((container: FoundationLabContainer) => container.lab.writeStorage(), 30000); }
   agentProbe(): void { this.run((container: FoundationLabContainer, ctx: CallContext) => container.agentProbe(this.baseUrl, ctx), 45000); }
+
+  searchReaderLogs(): void {
+    this.traceRows = ReaderTrace.query(this.traceQuery,150);
+    this.traceTotal = ReaderTrace.total();
+  }
+  async clearReaderLogs(): Promise<void> { await ReaderTrace.clear(); this.searchReaderLogs(); }
 
   request(path: string = '/health', timeoutMs: number = 30000): void {
     this.run((container: FoundationLabContainer, ctx: CallContext) => {

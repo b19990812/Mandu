@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import BuildProfile from 'BuildProfile';
 import { DebugLabVM } from '../vm/DebugLabVM';
+import { ReaderTraceEntry } from '../diagnostic/ReaderTrace';
 
 @Entry
 @Component
@@ -12,6 +13,14 @@ struct DebugLabPage {
   }
 
   aboutToDisappear(): void { this.vm.dispose(); }
+
+  private formatTraceTime(timestamp: number): string {
+    const date = new Date(timestamp);
+    const month = date.getMonth() + 1; const day = date.getDate();
+    const hours = date.getHours(); const minutes = date.getMinutes(); const seconds = date.getSeconds();
+    return month.toString() + '/' + day.toString() + ' ' + (hours < 10 ? '0' : '') + hours.toString() + ':' +
+      (minutes < 10 ? '0' : '') + minutes.toString() + ':' + (seconds < 10 ? '0' : '') + seconds.toString();
+  }
 
   build() {
     Scroll() {
@@ -41,6 +50,29 @@ struct DebugLabPage {
         Button('跨域跳转（预期 POLICY_DENIED）').enabled(!this.vm.busy)
           .onClick(() => this.vm.request('/fault/cross-host'))
         Button('取消当前操作').enabled(this.vm.busy).onClick(() => this.vm.cancel())
+        Text('阅读性能日志').fontSize(20).fontWeight(FontWeight.Medium)
+        Text('日志最多保留最近 1500 条；离开阅读器时写入本地私有存储。字段只包含来源标识、页号、阶段、耗时、缓存层级和数值计时。')
+          .fontSize(13).fontColor('#53645E')
+        TextInput({ text: this.vm.traceQuery,placeholder: '检索阶段、缓存层级、角色、页号或来源标识' })
+          .onChange((value: string) => { this.vm.traceQuery = value; })
+        Row({ space: 10 }) {
+          Button('检索最近日志').onClick(() => this.vm.searchReaderLogs())
+          Button('清空阅读日志').onClick(() => this.vm.clearReaderLogs())
+        }
+        Text('匹配结果：' + this.vm.traceRows.length.toString() + ' / 当前保留：' + this.vm.traceTotal.toString()).fontSize(13)
+        ForEach(this.vm.traceRows,(entry: ReaderTraceEntry) => {
+          Column({ space: 3 }) {
+            Text('#' + entry.sequence.toString() + '  ' + entry.stage + '  ' + entry.durationMs.toString() + ' ms  [' + entry.outcome + ']')
+              .fontSize(13).fontWeight(FontWeight.Medium).width('100%')
+            Text('时间 ' + this.formatTraceTime(entry.timestamp) + ' · 会话 ' + entry.sessionId.substring(0,8) + ' · 操作 ' + entry.operationId.substring(0,8) +
+              ' · ' + (entry.pageIndex > 0 ? '页 ' + entry.pageIndex.toString() : '章节') +
+              (entry.partIndex > 0 ? ' · 分块 ' + entry.partIndex.toString() : '') + ' · ' + entry.role + ' · ' + entry.sourceId)
+              .fontSize(11).fontColor('#53645E').width('100%')
+            Text('缓存 ' + (entry.cacheTier || '—') + ' · 数量 ' + entry.count.toString() + ' · 字节 ' + entry.bytes.toString() +
+              (entry.stage === 'network-http' && entry.metrics.length >= 5 ? ' · DNS/TCP/TLS/首字节/正文(ms) ' + entry.metrics.slice(0,5).join('/') : ''))
+              .fontSize(11).fontColor('#53645E').width('100%')
+          }.width('100%').padding(9).backgroundColor('#E6EEEA').borderRadius(6)
+        },(entry: ReaderTraceEntry) => entry.sequence.toString())
       }
       .width('100%').padding(24).alignItems(HorizontalAlign.Start)
     }

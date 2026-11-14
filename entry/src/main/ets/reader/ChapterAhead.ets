@@ -1,6 +1,7 @@
 import { BookSession, ReaderService } from '../business/ReaderService';
 import { CancelScope } from '../model/CancelScope';
-import { CallContext } from '../model/RequestTypes';
+import { CallContext, ReaderTraceContext } from '../model/RequestTypes';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
 
 // At most one prepared chapter and its first three compressed images; no whole-chapter decode.
 export class ChapterAhead {
@@ -11,10 +12,10 @@ export class ChapterAhead {
   private id: string = '';
   private preparedAt: number = 0;
   constructor(reader: ReaderService) { this.reader = reader; }
-  prepare(id: string, offlineOnly: boolean, skipRead: boolean): void {
+  prepare(id: string, offlineOnly: boolean, skipRead: boolean,trace?: ReaderTraceContext): void {
     if (!id || this.id === id) { return; } this.clear(); this.id = id;
     const scope = new CancelScope(); this.scope = scope;
-    const ctx: CallContext = { callId: 'reader-prefetch-next',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: 1 };
+    const ctx: CallContext = { callId: 'reader-prefetch-next',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: 1,trace: trace };
     this.pending = this.load(id,offlineOnly,skipRead,ctx);
   }
   private async load(id: string, offlineOnly: boolean, skipRead: boolean, ctx: CallContext): Promise<void> {
@@ -22,7 +23,8 @@ export class ChapterAhead {
     try {
       session = await this.reader.open(id,ctx,offlineOnly,skipRead);
       for (let index = 0; !ctx.cancel.cancelled && index < Math.min(3,session.pages.length); index++) {
-        try { await session.cache.load(session.source,session.chapter.ref,session.pages[index],{ callId: ctx.callId,deadlineMs: ctx.deadlineMs,cancel: ctx.cancel,ruleRevision: session.source?.version || 1 }); }
+        try { await session.cache.load(session.source,session.chapter.ref,session.pages[index],{ callId: ctx.callId,deadlineMs: ctx.deadlineMs,cancel: ctx.cancel,
+          ruleRevision: session.source?.version || 1,trace: ctx.trace ? ReaderTrace.context(ctx.trace.sessionId,session.source?.id || ctx.trace.sourceId,index + 1,'chapter-prefetch') : undefined }); }
         catch (error) { if (index === 0 || ctx.cancel.cancelled) { throw error as Error; } break; }
       }
       if (ctx.cancel.cancelled || this.id !== id) { session.cache.dispose(); return; }

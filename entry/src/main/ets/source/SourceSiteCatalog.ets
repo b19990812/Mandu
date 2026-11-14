@@ -14,7 +14,6 @@ export function sourceSiteDefinitions(): SourceSiteDefinition[] {
     },
     { sourceId: 'org.hsmihon.baoziplus',name: '包子漫画 Plus',defaultBaseUrl: 'https://www.webmota.com/' },
     { sourceId: 'org.hsmihon.hipmh',name: 'HIP 漫画',defaultBaseUrl: 'https://m.hipmh.com/' },
-    { sourceId: 'org.hsmihon.vomic',name: 'Vomic 漫画',defaultBaseUrl: 'https://vomicmh.com/' },
     { sourceId: 'org.hsmihon.manhuagui',name: '漫画柜',defaultBaseUrl: 'https://www.manhuagui.com/' },
     { sourceId: 'org.hsmihon.manhuaku',name: '漫画库',defaultBaseUrl: 'https://www.manhuaku.com.cn/' },
     { sourceId: 'org.hsmihon.mycomic',name: 'MYCOMIC 我的漫画',defaultBaseUrl: 'https://mycomic.com/' },

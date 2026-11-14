@@ -15,6 +15,7 @@ export class PagerSlot {
   status: string = '正在准备图片…';
   failed: boolean = false;
   errorCode?: ErrorCode;
+  foreground: boolean = false;
   ratio: number = 0;
   companion: PagerSlot | undefined = undefined;
   readonly span: number;
@@ -38,10 +39,10 @@ export class PagerWindow {
   onFailure: (index: number, message: string) => void = () => {};
   onChange: (index: number) => void = () => {};
   private serial: number = 0;
-  private loader?: (index: number, scope: CancelScope) => Promise<ReaderAsset>;
-  reset(index: number, total: number, ratio: number, loader: (index: number, scope: CancelScope) => Promise<ReaderAsset>, span: number = 1): void {
+  private loader?: (index: number, scope: CancelScope, foreground: boolean) => Promise<ReaderAsset>;
+  reset(index: number, total: number, ratio: number, loader: (index: number, scope: CancelScope, foreground: boolean) => Promise<ReaderAsset>, span: number = 1): void {
     this.clear(); this.span = span === 2 ? 2 : 1; this.center = this.group(index); this.total = total; this.loader = loader;
-    const slot = this.ensure(this.center,index === this.center ? ratio : 0);
+    const slot = this.ensure(this.center,index === this.center ? ratio : 0,true);
     if (slot?.companion && index !== this.center) { slot.companion.ratio = ratio; }
   }
   group(index: number): number { return Math.floor(index / this.span) * this.span; }
@@ -52,32 +53,62 @@ export class PagerWindow {
     if (slot) { this.slots = this.slots.filter((item: PagerSlot) => item !== slot); }
     return slot;
   }
-  ensure(index: number, ratio: number = 0): PagerSlot | undefined {
+  ensure(index: number, ratio: number = 0, foreground: boolean = false): PagerSlot | undefined {
     if (index < 0 || index >= this.total || !this.loader) { return undefined; }
     index = this.group(index);
-    const existing = this.find(index); if (existing) { return existing; }
+    const existing = this.find(index);
+    if (existing) {
+      if (foreground) {
+        this.promote(existing);
+        if (existing.companion) { this.promote(existing.companion); }
+      }
+      return existing;
+    }
     // Keep the old center during a distant seek, but never build a chapter-sized tree.
     if (this.slots.length >= 3) {
       const removable = this.slots.find((slot: PagerSlot) => slot.index !== this.center && slot.index !== index);
       if (removable) { removable.dispose(); this.slots = this.slots.filter((slot: PagerSlot) => slot !== removable); }
     }
     const slot = new PagerSlot(index, (++this.serial).toString(), ratio,this.span);
+    slot.foreground = foreground;
     if (this.span === 2 && index + 1 < this.total) { slot.companion = new PagerSlot(index + 1,slot.key + '-pair'); }
+    if (slot.companion) { slot.companion.foreground = foreground; }
     this.slots = this.slots.concat([slot]); this.read(slot); if (slot.companion) { this.read(slot.companion); } return slot;
   }
-  private async read(slot: PagerSlot): Promise<void> {
+  private promote(slot: PagerSlot): void {
+    slot.foreground = true;
+    if (slot.errorCode === ErrorCode.BROWSER_RETRY_ON_DISPLAY) { this.retry(slot.index); }
+  }
+  private async read(slot: PagerSlot, retriedOnDisplay: boolean = false): Promise<void> {
     const loader = this.loader; if (!loader) { return; }
-    try { const asset = await loader(slot.index, slot.scope); if (!slot.scope.cancelled) { slot.accept(asset); } }
-    catch (error) { if (!slot.scope.cancelled) { slot.failed = true; slot.errorCode = error instanceof AppError ? error.code : undefined; slot.status = viewError(error as Error); this.onFailure(slot.index,slot.status); } }
+    try { slot.accept(await loader(slot.index,slot.scope,slot.foreground)); }
+    catch (error) {
+      if (slot.scope.cancelled) { return; }
+      const code = error instanceof AppError ? error.code : undefined;
+      if (!retriedOnDisplay && slot.foreground && code === ErrorCode.BROWSER_RETRY_ON_DISPLAY) {
+        // The selected page may still be consuming a failed background request.
+        this.read(slot,true);
+        return;
+      }
+      slot.failed = true;
+      slot.errorCode = code;
+      slot.status = viewError(error as Error);
+      if (slot.foreground || code !== ErrorCode.BROWSER_RETRY_ON_DISPLAY) { this.onFailure(slot.index,slot.status); }
+    }
     if (!slot.scope.cancelled && this.page(slot.index) === slot) { this.onChange(slot.index); }
   }
   retry(index: number): void {
     const slot = this.find(this.group(index)); const page = this.page(index); if (!slot || !page?.failed) { return; }
+    page.foreground = true;
     if (page.asset) {
       const ratio = slot.ratio; const companionRatio = slot.companion?.ratio || 0;
       slot.dispose(); this.slots = this.slots.filter((item: PagerSlot) => item !== slot);
-      const replacement = this.ensure(slot.index,ratio); if (replacement?.companion) { replacement.companion.ratio = companionRatio; }
-    } else { page.failed = false; page.errorCode = undefined; page.status = '正在准备图片…'; this.onChange(page.index); this.read(page); }
+      const replacement = this.ensure(slot.index,ratio,true); if (replacement?.companion) { replacement.companion.ratio = companionRatio; }
+    } else {
+      const deferred = page.errorCode === ErrorCode.BROWSER_RETRY_ON_DISPLAY;
+      page.failed = false; page.errorCode = undefined; page.status = '正在准备图片…';
+      this.onChange(page.index); this.read(page,deferred);
+    }
   }
   commit(index: number): boolean {
     const slot = this.find(index); if (!slot?.complete()) { return false; }

@@ -1,9 +1,10 @@
 import { ReaderAsset } from './ReaderAssetCache';
 import { DecodedTile, TileDecoder } from './TileDecoder';
-import { CallContext } from '../model/RequestTypes';
+import { CallContext, ReaderTraceContext } from '../model/RequestTypes';
 import { CancelScope } from '../model/CancelScope';
 import { checkCall } from '../source/SourceHttp';
 import { FilePins } from '../storage/FilePins';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
 
 // Idle maps use only the preload pool; acquire promotes their lease into the display pool.
 export class TileWarmCache {
@@ -23,31 +24,33 @@ export class TileWarmCache {
   }
   static async acquire(asset: ReaderAsset, tile: number, width: number, ctx: CallContext): Promise<DecodedTile> {
     const key = TileWarmCache.key(asset, tile, width);
+    const started = Date.now();
     checkCall(ctx);
     const map = TileWarmCache.maps.get(key);
     if (map) {
       TileWarmCache.maps.delete(key); TileWarmCache.bytes -= map.bytes;
-      if (map.promote()) { return map; }
+      if (map.promote()) { ReaderTrace.record(ctx.trace,'tile-warm-cache-hit',Date.now() - started,'hit','decode-cache',0,map.bytes); return map; }
       await map.release();
     }
     return new TileDecoder().decode(asset, tile, width, ctx);
   }
-  static async page(asset: ReaderAsset, cancel: CancelScope): Promise<void> {
+  static async page(asset: ReaderAsset, cancel: CancelScope,trace?: ReaderTraceContext): Promise<void> {
     const width = TileWarmCache.fit === 'width' || (TileWarmCache.fit === 'auto' && asset.height / asset.width > 3) ? TileWarmCache.width :
       TileWarmCache.fit === 'height' ? TileWarmCache.height * asset.width / asset.height : Math.min(TileWarmCache.width, TileWarmCache.height * asset.width / asset.height);
     for (let tile = 0; tile < Math.min(2, Math.ceil(asset.height / TileDecoder.BLOCK_HEIGHT)); tile++) {
-      if (cancel.cancelled) { return; } await TileWarmCache.warm(asset, tile, width, cancel);
+      if (cancel.cancelled) { return; } await TileWarmCache.warm(asset, tile, width, cancel,trace);
     }
   }
-  static async warm(asset: ReaderAsset, tile: number, width: number, cancel: CancelScope): Promise<void> {
+  static async warm(asset: ReaderAsset, tile: number, width: number, cancel: CancelScope,trace?: ReaderTraceContext): Promise<void> {
     const key = TileWarmCache.key(asset, tile, width);
     if (cancel.cancelled || tile * TileDecoder.BLOCK_HEIGHT >= asset.height || TileWarmCache.maps.has(key) || TileWarmCache.pending.has(key) || TileWarmCache.pending.size >= 2) { return; }
     const scope = TileWarmCache.scope;
-    const task = TileWarmCache.prepare(key, asset, tile, width, scope, cancel);
+    const task = TileWarmCache.prepare(key, asset, tile, width, scope, cancel,trace);
     TileWarmCache.pending.set(key, task);
     try { await task; } finally { if (TileWarmCache.pending.get(key) === task) { TileWarmCache.pending.delete(key); } }
   }
-  private static async prepare(key: string, asset: ReaderAsset, tile: number, width: number, scope: CancelScope, caller: CancelScope): Promise<void> {
+  private static async prepare(key: string, asset: ReaderAsset, tile: number, width: number, scope: CancelScope, caller: CancelScope,
+    trace?: ReaderTraceContext): Promise<void> {
     const cancel = new CancelScope(); const stop = scope.subscribe(() => cancel.cancel()); const stopCaller = caller.subscribe(() => cancel.cancel());
     const unpin = FilePins.pin(asset.uri.substring(7));
     try {
@@ -59,7 +62,8 @@ export class TileWarmCache {
       }
       if (cancel.cancelled || TileDecoder.preloadBytes() >= TileDecoder.PRELOAD_LIMIT) { return; }
       const map = await new TileDecoder().decode(asset, tile, width,
-        { callId: 'reader-prerender', deadlineMs: Date.now() + 30000, cancel: cancel, ruleRevision: 0 }, true);
+        { callId: 'reader-prerender', deadlineMs: Date.now() + 30000, cancel: cancel, ruleRevision: 0,
+          trace: ReaderTrace.withPart(trace,tile + 1,'decode-prefetch') }, true);
       if (cancel.cancelled || !map.isSpeculative() || TileWarmCache.bytes + map.bytes > TileDecoder.PRELOAD_LIMIT || TileWarmCache.maps.size >= 6) { await map.release(); return; }
       TileWarmCache.maps.set(key, map); TileWarmCache.bytes += map.bytes;
     } catch (_) { /* Best effort; the visible path retains retry and error reporting. */ }

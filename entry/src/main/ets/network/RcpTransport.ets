@@ -12,6 +12,7 @@ import { CopyApiPolicy } from './CopyApiPolicy';
 import { metadataPostBody } from './ReadPostPolicy';
 import { EHENTAI_BASE, EHENTAI_ID, EhentaiQuota, ehentaiAddress } from './EhentaiAccess';
 import { NetworkPerf } from '../diagnostic/NetworkPerf';
+import { RcpSessionPool } from './RcpSessionPool';
 
 export class RcpTransport implements Transport {
   private static tls12Hosts: Set<string> = new Set();
@@ -84,9 +85,11 @@ export class RcpTransport implements Transport {
           EhentaiQuota.check();
           if (target.searchParams.has('f_search') && target.pathname === '/') { RequestScheduler.cooldown(plan.sourceId,host,'3'); }
         }
-        let cookie: string;
         const sameEhentaiSite = target.origin + '/' === EHENTAI_BASE;
-        try { cookie = this.anonymous || ehentai && !sameEhentaiSite ? '' : await SiteSession.cookie(plan.sourceId,address); }
+        const anonymous = this.anonymous || ehentai && !sameEhentaiSite;
+        const siteEpoch = anonymous ? 0 : SiteSession.epoch(plan.sourceId);
+        let cookie: string;
+        try { cookie = anonymous ? '' : await SiteSession.cookie(plan.sourceId,address); }
         catch (_) { throw new AppError(ErrorCode.IO_ERROR,'读取站点会话失败（' + host + '），请清除或重新保存该站点会话'); }
         const requestHeaders: rcp.RequestHeaders = {};
         Object.keys(headers).forEach((key: string) => { requestHeaders[key] = headers[key]; });
@@ -95,7 +98,7 @@ export class RcpTransport implements Transport {
           this.copyApi.headers().forEach((pair: HeaderPair) => { requestHeaders[pair.name] = pair.value; });
           await this.copyApi.wait(ctx); this.check(ctx);
         }
-        response = await this.once(address, requestHeaders, plan.maxBytes, ctx, sink,postBody,plan.sourceId);
+        response = await this.once(target, requestHeaders, plan.maxBytes, ctx, sink,postBody,plan.sourceId,anonymous,siteEpoch);
         if (ehentai) { EhentaiQuota.observe(response); }
       }
       finally { release(); }
@@ -125,13 +128,19 @@ export class RcpTransport implements Transport {
     throw new AppError(ErrorCode.POLICY_DENIED, '跳转次数超限');
   }
 
-  private async once(address: string, headers: rcp.RequestHeaders, maxBytes: number,
-    ctx: CallContext, sink?: ByteSink,postBody?: string,sourceId: string = ''): Promise<TransportResponse> {
+  private async once(target: url.URL, headers: rcp.RequestHeaders, maxBytes: number, ctx: CallContext,
+    sink: ByteSink | undefined, postBody: string | undefined, sourceId: string, anonymous: boolean,
+    siteEpoch: number): Promise<TransportResponse> {
     this.check(ctx);
     const started = Date.now();
     const remaining = ctx.deadlineMs - Date.now();
-    const session = rcp.createSession();
+    const address = target.toString();
+    const tlsMax = RcpTransport.tls12Hosts.has(target.hostname) ? 'TlsV1.2' : 'TlsV1.3';
+    // Scope pooled connections by destination and source state. Headers stay request-local.
+    const sessionKey = JSON.stringify([sourceId,target.origin,ctx.ruleRevision,anonymous,siteEpoch,!!headers['Cookie'],tlsMax]);
     const request = new rcp.Request(address, postBody === undefined ? 'GET' : 'POST', headers,postBody || undefined);
+    const lease = RcpSessionPool.acquire(sessionKey);
+    const session = lease.session;
     let timedOut = false;
     let exceeded = false;
     let received = 0;
@@ -148,7 +157,7 @@ export class RcpTransport implements Transport {
     }, remaining);
     try {
       request.configuration = {
-      security: { remoteValidation: 'system',tlsRange: { min: 'TlsV1.2',max: RcpTransport.tls12Hosts.has(new url.URL(address).hostname) ? 'TlsV1.2' : 'TlsV1.3' } },
+      security: { remoteValidation: 'system',tlsRange: { min: 'TlsV1.2',max: tlsMax } },
       transfer: {
         autoRedirect: false,
         timeout: { connectMs: Math.min(30000, remaining), transferMs: remaining }
@@ -208,7 +217,6 @@ export class RcpTransport implements Transport {
       if (exceeded) { throw new AppError(ErrorCode.RESPONSE_TOO_LARGE, '响应超过大小限制'); }
       if (sinkError) { throw sinkFailure || new AppError(ErrorCode.IO_ERROR, '写入下载文件失败'); }
       if (error instanceof AppError) { throw error; }
-      const target = new url.URL(address);
       const host = target.hostname; const rawCode = Number((error as BusinessError).code); const sdkCode = Number.isSafeInteger(rawCode) ? rawCode : 0;
       hilog.error(0x0001,'HSReader','RCP_FAILURE host=%{public}s sdk=%{public}d port=%{public}s',host,sdkCode,target.port || '443');
       if (sourceId === EHENTAI_ID && sink && host.endsWith('.hath.network') && [1007900035,1007900060].indexOf(sdkCode) >= 0) {
@@ -221,8 +229,8 @@ export class RcpTransport implements Transport {
       clearTimeout(timer);
       unsubscribe();
       try { await writes; } catch (_) { /* The outer request reports cancellation/timeout; finish writes before closing its sink. */ }
-      NetworkPerf.http(sourceId,new url.URL(address).hostname,started,statusCode,received,timing);
-      session.close();
+      lease.release();
+      NetworkPerf.http(sourceId,target.hostname,started,statusCode,received,timing,ctx.trace);
     }
   }
 }

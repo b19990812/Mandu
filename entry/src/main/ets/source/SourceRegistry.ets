@@ -79,7 +79,7 @@ export class RegistryTransport implements Transport {
     const cancel = new CancelScope(); const unsubscribe = ctx.cancel.subscribe(() => cancel.cancel());
     const unwatch = SourceChanges.subscribe(this.state.id, (state: SourceState) => { if (!state.enabled || state.removed || !this.pinned && state.revision !== this.state.revision) { cancel.cancel(); } });
     const address = SourceChanges.watchAddress(this.state.id,() => cancel.cancel());
-    const inner: CallContext = { callId: ctx.callId, deadlineMs: ctx.deadlineMs, cancel: cancel, ruleRevision: ctx.ruleRevision,retention: ctx.retention,priority: ctx.priority };
+    const inner: CallContext = { callId: ctx.callId, deadlineMs: ctx.deadlineMs, cancel: cancel, ruleRevision: ctx.ruleRevision,retention: ctx.retention,priority: ctx.priority,trace: ctx.trace };
     try {
       await this.guard(); checkCall(inner);
       const response = sink ? await this.delegate.streamToFile(plan, inner, sink) : await this.delegate.send(plan, inner);

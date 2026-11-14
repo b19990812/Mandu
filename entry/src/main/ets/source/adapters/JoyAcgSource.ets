@@ -12,8 +12,10 @@ import { refreshPage } from '../RefreshPage';
 import { checkCall } from '../SourceHttp';
 import { SourceCatalog, SourceCatalogSnapshot } from '../../model/SourceTypes';
 
-export const JOY_IMAGE_HOSTS: string[] = ['supercdn.site'];
-export const JOY_COVER_HOSTS: string[] = ['i0.wp.com','supercdn.site'];
+const JOY_PROXY_HOSTS: string[] = ['i0.wp.com','i1.wp.com','i2.wp.com','i3.wp.com'];
+export const JOY_IMAGE_HOSTS: string[] = ['supercdn.site',...JOY_PROXY_HOSTS];
+export const JOY_COVER_HOSTS: string[] = JOY_IMAGE_HOSTS.slice();
+const JOY_PAGE_PATH: RegExp = /^\/galleries\/([0-9]+)\/([0-9]+)\.(?:jpe?g|webp|png)$/;
 interface JoyBook { root: HtmlNode; detail: MangaDetail; pages: PageRef[]; }
 export class JoyAcgSource implements Source,SourceDiscovery {
   readonly id: string = 'org.hsmihon.joyacg'; readonly version: number = 1;
@@ -29,6 +31,14 @@ export class JoyAcgSource implements Source,SourceDiscovery {
     if (ref.sourceId !== this.id || parts.length !== (chapter ? 2 : 1) || chapter && parts[1] !== 'book' || ref.locator !== expected.locator) { throw new AppError(ErrorCode.RULE_INVALID,'JoyACG作品身份与地址不符'); } return expected;
   }
   private page(token: PageToken | undefined,binding: string): number { const page = token ? Number(token.value) : 1; if (token && (token.kind !== 'joy-page' || token.binding !== binding) || !Number.isSafeInteger(page) || page < 1 || page > 1000) { throw new AppError(ErrorCode.RULE_INVALID,'JoyACG分页标记已失效'); } return page; }
+  private galleryPath(address: url.URL): string {
+    if (JOY_PROXY_HOSTS.indexOf(address.hostname) < 0) { return address.pathname; }
+    // The proxy and upstream image nodes can rotate between pages or on refresh.
+    const proxy = /^\/([a-z0-9.-]+)(\/galleries\/.*)$/i.exec(address.pathname);
+    if (!proxy) { return ''; }
+    this.images.validate('https://' + proxy[1] + '/');
+    return proxy[2];
+  }
   private cover(raw: string): string | undefined {
     try { const address = this.covers.validate(raw); const path = address.pathname;
       if (!/^\/galleries\/[0-9]+\//.test(path)) {
@@ -86,9 +96,10 @@ export class JoyAcgSource implements Source,SourceDiscovery {
     if (!title.trim() || title.length > 1024 || !Number.isSafeInteger(count) || count < 1 || count > 2000 || nodes.length !== count) { throw new AppError(ErrorCode.PARSE_ERROR,'JoyACG标题或整本页数不完整'); }
     let gallery = ''; const seen: Set<string> = new Set();
     const pages = nodes.map((image: HtmlNode,index: number): PageRef => {
-      const address = this.images.validate(image.attribute('data-src') || image.attribute('src')); const match = /^\/galleries\/([0-9]+)\/([0-9]+)\.(?:jpe?g|webp|png)$/.exec(address.pathname);
-      if (!match || Number(match[2]) !== index + 1 || gallery && gallery !== match[1] || seen.has(address.pathname)) { throw new AppError(ErrorCode.PARSE_ERROR,'JoyACG页序、画廊身份或图片路径不符'); }
-      gallery = match[1]; seen.add(address.pathname); return { pageKey: address.pathname,ordinal: index,locator: address.pathname,imageUrl: address.toString() };
+      const address = this.images.validate(image.attribute('data-src') || image.attribute('src'));
+      const path = this.galleryPath(address); const match = JOY_PAGE_PATH.exec(path);
+      if (!match || Number(match[2]) !== index + 1 || gallery && gallery !== match[1] || seen.has(path)) { throw new AppError(ErrorCode.PARSE_ERROR,'JoyACG页序、画廊身份或图片路径不符'); }
+      gallery = match[1]; seen.add(path); return { pageKey: path,ordinal: index,locator: path,imageUrl: address.toString() };
     });
     const tags = labels.filter((link: HtmlNode) => link.attribute('href').includes('/tag/')).map((link: HtmlNode) => link.textContent().trim());
     const cover = this.cover(this.select.select(root,'meta[property="og:image"]')[0]?.attribute('content') || '');
@@ -107,7 +118,8 @@ export class JoyAcgSource implements Source,SourceDiscovery {
   async pages(ref: SourceRef,token: PageToken | undefined,ctx: CallContext): Promise<SourceBatch<PageRef>> { const manga = this.check(ref,true); if (token) { throw new AppError(ErrorCode.RULE_INVALID,'JoyACG整本页清单不分页'); } return { items: (await this.book(manga,ctx)).pages }; }
   async resolveImage(ref: SourceRef,page: PageRef,refresh: boolean,ctx: CallContext): Promise<ImageRequest> {
     this.check(ref,true); checkCall(ctx); if (refresh) { return this.resolveImage(ref,await refreshPage(this,ref,page.pageKey,ctx),false,ctx); }
-    const address = this.images.validate(page.imageUrl || ''); if (address.pathname !== page.pageKey || page.locator !== page.pageKey) { throw new AppError(ErrorCode.CONTENT_CHANGED,'JoyACG页面身份不符'); }
+    const address = this.images.validate(page.imageUrl || ''); const path = this.galleryPath(address);
+    if (!JOY_PAGE_PATH.test(path) || path !== page.pageKey || page.locator !== page.pageKey) { throw new AppError(ErrorCode.CONTENT_CHANGED,'JoyACG页面身份不符'); }
     return { url: address.toString(),headers: [{ name: 'Referer',value: this.client.site.baseUrl }],contentRevision: this.client.binding('pages') };
   }
 }

@@ -395,7 +395,8 @@ export class EhentaiBrowserSession {
     } else if (code === webview.WebDownloadErrorCode.FILE_TOO_LARGE) {
       job.finish(imageLimitError(job.limit));
     } else if (code === webview.WebDownloadErrorCode.NETWORK_FAILED || code === webview.WebDownloadErrorCode.NETWORK_TIMEOUT ||
-      code === webview.WebDownloadErrorCode.NETWORK_DISCONNECTED || code === webview.WebDownloadErrorCode.NETWORK_SERVER_DOWN) {
+      code === webview.WebDownloadErrorCode.NETWORK_DISCONNECTED || code === webview.WebDownloadErrorCode.NETWORK_SERVER_DOWN ||
+      code === webview.WebDownloadErrorCode.SERVER_UNREACHABLE) {
       job.finish(new AppError(ErrorCode.BROWSER_DOWNLOAD_FAILED,'E-Hentai 图片节点连接失败（ArkWeb ' + code.toString() + '）'));
     } else { job.finish(this.downloadFailure()); }
   }
@@ -430,18 +431,19 @@ export class EhentaiBrowserSession {
         try { return await this.readAttempt(address,limit,ctx,sink,deadline,visited.size < 3); }
         catch (error) {
           const job = this.active;
-          if (!job?.retryPage || visited.size >= 3 || visited.has(job.retryPage) ||
-            this.closed || Date.now() >= deadline ||
-            job.received || job.writing || (job.stage !== ImageStage.Port && job.stage !== ImageStage.Download) ||
+          if (!job || this.closed || (job.stage !== ImageStage.Port && job.stage !== ImageStage.Download) ||
             !(error instanceof AppError) ||
             (error.code !== ErrorCode.BROWSER_DOWNLOAD_FAILED && error.code !== ErrorCode.TLS_HANDSHAKE)) {
             throw error as Error;
           }
-          checkCall(ctx); EhentaiQuota.check();
+          checkCall(ctx);
           // Site reloads consume quota. Defer them until the reader requests the page.
           if (requestPriority(ctx) > NetworkPriority.Interactive) {
             throw new AppError(ErrorCode.BROWSER_RETRY_ON_DISPLAY,error.message);
           }
+          if (!job.retryPage || visited.size >= 3 || visited.has(job.retryPage) || Date.now() >= deadline ||
+            job.received || job.writing) { throw error; }
+          EhentaiQuota.check();
           hilog.info(0x0001,'HSReader','EHENTAI_ARKWEB_REASSIGN attempt=%{public}d code=%{public}s',visited.size,error.code);
           address = job.retryPage;
           visited.add(address);

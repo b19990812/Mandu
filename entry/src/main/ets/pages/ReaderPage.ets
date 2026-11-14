@@ -56,7 +56,7 @@ struct ReaderPage {
         WebtoonViewer({ vm: this.vm,revision: this.vm.stripRevision,controller: this.scroller,zoom: this.zoom,
           onZoom: (zoom: number) => { this.zoom = zoom; },onMenu: () => { this.menuVisible = !this.menuVisible; } })
       } else if (this.vm.active && this.vm.asset) {
-        ReadingCanvas({ asset: this.vm.asset,zoom: this.zoom,ratio: this.vm.ratio,controller: this.scroller,
+        ReadingCanvas({ asset: this.vm.asset,traceKey: this.vm.tracePage(this.vm.displayIndex,'visible').operationId,zoom: this.zoom,ratio: this.vm.ratio,controller: this.scroller,
           turnDirection: this.vm.turnDirection,backdrop: this.vm.background,scaleMode: this.vm.scale,vertical: this.vm.mode === 'vertical',tapZones: this.vm.tapZones,invertTap: this.vm.invertTap,
           onPosition: (ratio: number) => this.vm.scroll(ratio),onEnd: () => this.vm.reachedEnd(),onZoom: (zoom: number) => { this.zoom = zoom; },
           onTurn: (direction: number) => this.turn(direction),onTapTurn: (direction: number) => this.tapTurn(direction),onMenu: () => { this.menuVisible = !this.menuVisible; } })

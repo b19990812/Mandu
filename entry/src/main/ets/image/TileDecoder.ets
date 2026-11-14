@@ -6,6 +6,7 @@ import { checkCall } from '../source/SourceHttp';
 import { ReaderAsset } from './ReaderAssetCache';
 import { DecodeDemand, DecodeScheduler } from './DecodeScheduler';
 import { ReaderPerf } from '../diagnostic/ReaderPerf';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
 
 class TilePixels {
   readonly map: image.PixelMap;
@@ -105,7 +106,8 @@ export class TileDecoder {
     let job = TileDecoder.jobs.get(key);
     if (!job || job.cancel.cancelled) {
       job = new TileDecodeJob(asset.uri,speculative); TileDecoder.jobs.set(key,job); const current = job;
-      const shared: CallContext = { callId: ctx.callId,deadlineMs: Date.now() + 60000,cancel: current.cancel,ruleRevision: ctx.ruleRevision };
+      const shared: CallContext = { callId: ctx.callId,deadlineMs: Date.now() + 60000,cancel: current.cancel,ruleRevision: ctx.ruleRevision,
+        trace: ReaderTrace.withPart(ctx.trace,tile + 1) };
       current.promise = this.produce(asset,tile,width,key,shared,current);
       current.promise.then((result: DecodedTile) => { current.result = result; TileDecoder.retire(key,current); },() => { if (TileDecoder.jobs.get(key) === current) { TileDecoder.jobs.delete(key); } });
     }
@@ -132,9 +134,9 @@ export class TileDecoder {
     });
   }
   private async produce(asset: ReaderAsset,tile: number,width: number,key: string,ctx: CallContext,job: TileDecodeJob): Promise<DecodedTile> {
-    const release = await DecodeScheduler.acquire(ctx,job.demand); const decodeAt = ReaderPerf.enabled ? Date.now() : 0;
+    const release = await DecodeScheduler.acquire(ctx,job.demand); const decodeStarted = Date.now(); const decodeAt = ReaderPerf.enabled ? decodeStarted : 0;
     // A queued preload joined by the visible page reserves the display pool when it starts.
-    const speculative = job.demand.background; let reserved = 0;
+    const speculative = job.demand.background; let reserved = 0; let decodeOutcome = 'ok';
     try {
       checkCall(ctx); const top = tile * TileDecoder.BLOCK_HEIGHT; const height = Math.min(TileDecoder.BLOCK_HEIGHT,asset.height - top);
       if (height < 1) { throw new AppError(ErrorCode.CONFIG_INVALID,'图像分块位置无效'); }
@@ -157,6 +159,12 @@ export class TileDecoder {
         const owner = new TilePixels(map,bytes,speculative,key); TileDecoder.pixels.set(key,owner);
         const lease = new DecodedTile(map,bytes,speculative,owner); map = undefined; return lease;
       } finally { try { if (map) { await map.release(); } } finally { if (!sourceClosed) { await source.release(); } } }
-    } finally { if (reserved) { TileDecoder.unreserve(reserved,speculative); } ReaderPerf.event('decode',Date.now() - decodeAt); release(); }
+    } catch (error) {
+      decodeOutcome = error instanceof AppError ? error.code : 'failed'; throw error as Error;
+    } finally {
+      if (reserved) { TileDecoder.unreserve(reserved,speculative); }
+      ReaderTrace.record(ctx.trace,'tile-decode',Date.now() - decodeStarted,decodeOutcome,speculative ? 'preload' : 'display');
+      ReaderPerf.event('decode',Date.now() - decodeAt); release();
+    }
   }
 }

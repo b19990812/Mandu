@@ -46,7 +46,7 @@ export class ExtensionCatalog {
           if (pkg === 'eu.kanade.tachiyomi.extension.zh.hipmh' && id.scalar === '10879178251255350') { entry.nativeId = 'org.hsmihon.hipmh'; entry.status = '图片清单协议已验证；未验证图片下载与展示'; }
           if (pkg === 'eu.kanade.tachiyomi.extension.zh.vomicmh' && id.scalar === '3001986353') { entry.nativeId = 'org.hsmihon.vomic'; entry.status = '已接入公开目录与登录清单解析；真实登录及下载待确认'; }
         }
-        if (pkg !== 'eu.kanade.tachiyomi.extension.zh.manwayuplus') { output.push(entry); }
+        if (pkg !== 'eu.kanade.tachiyomi.extension.zh.manwayuplus' && pkg !== 'eu.kanade.tachiyomi.extension.zh.vomicmh') { output.push(entry); }
         if (output.length > 1024) { throw new AppError(ErrorCode.RESPONSE_TOO_LARGE,'源目录超过1024项'); }
       });
     }); return output;

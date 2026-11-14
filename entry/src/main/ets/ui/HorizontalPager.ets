@@ -16,7 +16,6 @@ import { ReaderAsset } from '../image/ReaderAssetCache';
 import { PagerSlot, PagerWindow } from '../reader/PagerWindow';
 import { ReadingCanvas } from './ReadingCanvas';
 import { readerBackground } from '../model/ReaderDisplay';
-import { ErrorCode } from '../model/ErrorTypes';
 
 class ReleaseCurlFrames extends FrameCallback {
   private maps: image.PixelMap[];
@@ -65,7 +64,7 @@ struct PagerSurface {
         SpreadViewer({ vm: this.vm,slot: this.slot,selected: this.selected,moving: this.moving,zoom: this.zoom,viewportWidth: this.viewportWidth,loadRevision: this.loadRevision,
           onReady: this.onReady,onFailure: this.onFailure,onZoom: this.onZoom,onTurn: this.onTurn,onMenu: this.onMenu,onRetry: this.onRetryPage,onViewportSettled: this.onViewportSettled })
       } else if (this.displayAsset) {
-        ReadingCanvas({ asset: this.displayAsset, ratio: this.slot.ratio, zoom: this.selected ? this.zoom : 1,
+        ReadingCanvas({ asset: this.displayAsset,traceKey: this.vm.tracePage(this.slot.index,'visible').operationId, ratio: this.slot.ratio, zoom: this.selected ? this.zoom : 1,
           backdrop: this.vm.background, scaleMode: this.vm.scale, tapZones: this.vm.tapZones, invertTap: this.vm.invertTap,
           externalPaging: true, interactive: this.selected && !this.moving,
           onReady: (ready: boolean) => this.onReady(this.slot.index,ready),
@@ -269,7 +268,7 @@ export struct HorizontalPager {
     this.chapterCover?.dispose(); this.chapterCover = previous;
     this.window.onFailure = (index: number, message: string) => this.failed(index,message);
     this.window.onChange = (_index: number) => { if (this.visible) { this.updateDecodeFocus(); this.loadRevision++; } };
-    this.window.reset(this.vm.index,this.vm.total,this.vm.ratio,(index,scope) => this.vm.pagerAsset(index,scope),this.vm.mode === 'spread' ? 2 : 1);
+    this.window.reset(this.vm.index,this.vm.total,this.vm.ratio,(index,scope,foreground) => this.vm.pagerAsset(index,scope,foreground),this.vm.mode === 'spread' ? 2 : 1);
     this.pending = this.window.center;
   }
   private sign(): number { return this.readingDirection === 'rtl' ? -1 : 1; }
@@ -319,9 +318,7 @@ export struct HorizontalPager {
     });
   }
   private loadTarget(index: number): PagerSlot | undefined {
-    const slot = this.window.ensure(index);
-    if (slot?.errorCode === ErrorCode.BROWSER_RETRY_ON_DISPLAY) { this.window.retry(slot.index); }
-    if (slot?.companion?.errorCode === ErrorCode.BROWSER_RETRY_ON_DISPLAY) { this.window.retry(slot.companion.index); }
+    const slot = this.window.ensure(index,0,true);
     this.vm.prioritizePage(index);
     return slot;
   }

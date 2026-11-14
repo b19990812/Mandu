@@ -4,10 +4,13 @@ import { TileDecoder } from '../image/TileDecoder';
 import { ImageTile } from './ImageTile';
 import { ListDataSource } from './ListDataSource';
 import { readerBackground, tapAction } from '../model/ReaderDisplay';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
+import { ReaderTraceContext } from '../model/RequestTypes';
 
 @Component
 export struct ReadingCanvas {
   @Prop @Watch('assetChanged') asset: ReaderAsset;
+  @Prop traceKey: string = '';
   @Prop @Watch('zoomChanged') zoom: number = 1;
   @Prop ratio: number = 0;
   @Prop backdrop: string = 'dark';
@@ -58,6 +61,7 @@ export struct ReadingCanvas {
   private rendered: Set<number> = new Set();
   private viewportReady: boolean = false;
   private lastTileDecoded: boolean = false;
+  private assetStarted: number = 0;
   aboutToAppear(): void { this.visible = true; this.assetChanged(); }
   aboutToDisappear(): void { this.visible = false; this.onReady(false); this.generation++; if (this.menuTimer >= 0) { clearTimeout(this.menuTimer); } }
   private baseWidth(): number {
@@ -70,7 +74,7 @@ export struct ReadingCanvas {
   private configureWarm(): void { TileWarmCache.configure(this.getUIContext().vp2px(this.canvasWidth),this.getUIContext().vp2px(this.canvasHeight),this.scaleMode); }
   private assetChanged(): void {
     if (this.loadedUri === this.asset.uri) { return; }
-    this.loadedUri = this.asset.uri; this.rendered.clear(); this.viewportReady = false; this.onReady(false);
+    this.loadedUri = this.asset.uri; this.assetStarted = Date.now(); this.rendered.clear(); this.viewportReady = false; this.onReady(false);
     this.lastTileDecoded = false;
     const count = Math.ceil(this.asset.height / TileDecoder.BLOCK_HEIGHT); const items: number[] = [];
     for (let index = 0; index < count; index++) { items.push(index); } this.data.replace(items);
@@ -114,8 +118,16 @@ export struct ReadingCanvas {
     const last = Math.min(this.data.totalCount() - 1, Math.ceil(bottom / TileDecoder.BLOCK_HEIGHT) - 1);
     let ready = last >= first;
     for (let index = first; index <= last; index++) { if (!this.rendered.has(index)) { ready = false; } }
-    if (ready !== this.viewportReady) { this.viewportReady = ready; this.onReady(ready); }
+    if (ready !== this.viewportReady) {
+      this.viewportReady = ready;
+      if (ready) {
+        const trace = this.traceContext();
+        ReaderTrace.record(trace,'viewport-ready',Date.now() - (trace?.startedAt || this.assetStarted),'ready','visible',this.rendered.size);
+      }
+      this.onReady(ready);
+    }
   }
+  private traceContext(): ReaderTraceContext | undefined { return ReaderTrace.resolve(this.traceKey); }
   private setZoom(value: number): void { this.preview = 1; this.onZoom(Math.max(1,Math.min(4,value))); }
   private reportEnd(): void {
     const height = this.imageWidth * this.asset.height / this.asset.width;
@@ -159,7 +171,7 @@ export struct ReadingCanvas {
         List({ scroller: this.controller }) {
           LazyForEach(this.data,(index: number) => {
             ListItem() {
-              Row() { ImageTile({ asset: this.asset,index: index,quality: 1,onFailure: this.onFailure,onReady: (ready: boolean) => this.tileReady(index,ready),onDecoded: () => { if (index + 1 === this.data.totalCount()) { this.lastTileDecoded = true; this.reportEnd(); } } }).width(this.imageWidth) }
+              Row() { ImageTile({ asset: this.asset,index: index,quality: 1,traceKey: this.traceKey,onFailure: this.onFailure,onReady: (ready: boolean) => this.tileReady(index,ready),onDecoded: () => { if (index + 1 === this.data.totalCount()) { this.lastTileDecoded = true; this.reportEnd(); } } }).width(this.imageWidth) }
                 .width(Math.max(this.canvasWidth,this.imageWidth)).justifyContent(this.zoom > 1 || this.imageAlign === 'center' ? FlexAlign.Center : this.imageAlign === 'end' ? FlexAlign.End : FlexAlign.Start)
             }
           },(index: number) => this.asset.uri + ':' + index.toString())

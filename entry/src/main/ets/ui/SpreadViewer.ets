@@ -31,7 +31,7 @@ struct SpreadPage {
   build() {
     Stack() {
       if (this.displayAsset) {
-        ReadingCanvas({ asset: this.displayAsset,ratio: this.slot.ratio,zoom: this.selected ? this.zoom : 1,
+        ReadingCanvas({ asset: this.displayAsset,traceKey: this.vm.tracePage(this.slot.index,'visible').operationId,ratio: this.slot.ratio,zoom: this.selected ? this.zoom : 1,
           backdrop: this.vm.background,scaleMode: this.vm.scale,tapZones: this.vm.tapZones,invertTap: this.vm.invertTap,
           imageAlign: this.paired ? this.side === 0 ? 'end' : 'start' : 'center',
           edgeInset: this.paired ? spreadMargin(this.viewportWidth) : 0,

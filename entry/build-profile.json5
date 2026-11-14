@@ -17,8 +17,8 @@
     }
   }],
   "targets": [
-    { "name": "default", "source": { "pages": ["pages/HomePage", "pages/SourceHomePage", "pages/SourcesPage", "pages/ChapterReaderPage", "pages/RuleManagerPage", "pages/ExtensionManagerPage", "pages/SearchPage", "pages/DetailPage", "pages/LibraryPage", "pages/HistoryPage", "pages/ReaderPage", "pages/DownloadsPage", "pages/SettingsPage", "pages/LicensesPage", "pages/LocalImportPage", "pages/MigrationPage", "pages/SourceWebPage", "pages/TrackingPage"] } },
-    { "name": "lab", "source": { "pages": ["pages/HomePage", "pages/SourceHomePage", "pages/SourcesPage", "pages/ChapterReaderPage", "pages/RuleManagerPage", "pages/ExtensionManagerPage", "pages/SearchPage", "pages/DetailPage", "pages/LibraryPage", "pages/HistoryPage", "pages/ReaderPage", "pages/DownloadsPage", "pages/SettingsPage", "pages/LicensesPage", "pages/LocalImportPage", "pages/MigrationPage", "pages/SourceWebPage", "pages/TrackingPage", "pages/DebugLabPage"] } }
+    { "name": "default", "source": { "pages": ["pages/HomePage", "pages/SourceHomePage", "pages/SourcesPage", "pages/ChapterReaderPage", "pages/RuleManagerPage", "pages/ExtensionManagerPage", "pages/SearchPage", "pages/DetailPage", "pages/ReaderPage", "pages/DownloadsPage", "pages/SettingsPage", "pages/LicensesPage", "pages/LocalImportPage", "pages/MigrationPage", "pages/SourceWebPage", "pages/TrackingPage"] } },
+    { "name": "lab", "source": { "pages": ["pages/HomePage", "pages/SourceHomePage", "pages/SourcesPage", "pages/ChapterReaderPage", "pages/RuleManagerPage", "pages/ExtensionManagerPage", "pages/SearchPage", "pages/DetailPage", "pages/ReaderPage", "pages/DownloadsPage", "pages/SettingsPage", "pages/LicensesPage", "pages/LocalImportPage", "pages/MigrationPage", "pages/SourceWebPage", "pages/TrackingPage", "pages/DebugLabPage"] } }
   ]
 }
 

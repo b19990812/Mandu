@@ -1,21 +1,30 @@
-import { ChapterPageSource, PageRef, SourceRef } from '../model/SourceTypes';
+import { ChapterPageSource, ImageRequest, PageRef, SourceRef } from '../model/SourceTypes';
 import { CallContext } from '../model/RequestTypes';
 import { Transport } from '../network/Transport';
 import { FileStore } from '../storage/FileStore';
 import { AppError, ErrorCode } from '../model/ErrorTypes';
 import { checkCall, requireHttpSuccess } from '../source/SourceHttp';
 import { FileVerifier, VerifiedImage } from './FileVerifier';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
 
 export async function transferAsset(files: FileStore,key: string,source: ChapterPageSource,chapter: SourceRef,page: PageRef,transport: Transport,ctx: CallContext,maxBytes: number,attempts: number = 3): Promise<VerifiedImage> {
   let refresh = false;
   for (let attempt = 0; attempt < Math.max(1,Math.min(3,attempts)); attempt++) {
     checkCall(ctx); let verified: VerifiedImage | undefined = undefined;
     try {
-      const image = await source.resolveImage(chapter,page,refresh,ctx);
+      const resolveStarted = Date.now();
+      let image: ImageRequest;
+      try { image = await source.resolveImage(chapter,page,refresh,ctx); }
+      catch (error) { ReaderTrace.record(ctx.trace,'image-resolve',Date.now() - resolveStarted,error instanceof AppError ? error.code : 'failed','',attempt + 1); throw error as Error; }
+      ReaderTrace.record(ctx.trace,'image-resolve',Date.now() - resolveStarted,'ok','',attempt + 1);
       if (image.encoding) { throw new AppError(ErrorCode.POLICY_DENIED,'不支持此图片编码'); }
       await files.writeStream(key,async (sink) => {
         const response = await transport.streamToFile({ sourceId: source.id,url: image.url,headers: image.headers,maxBytes: maxBytes,responseKind: 'image' },ctx,sink); requireHttpSuccess(response);
-      },async (part: string) => { verified = await new FileVerifier().verify(part,ctx); });
+      },async (part: string) => {
+        const verifyStarted = Date.now();
+        try { const result = await new FileVerifier().verify(part,ctx); verified = result; ReaderTrace.record(ctx.trace,'image-verify',Date.now() - verifyStarted,'ok','',attempt + 1,result.bytes); }
+        catch (error) { ReaderTrace.record(ctx.trace,'image-verify',Date.now() - verifyStarted,error instanceof AppError ? error.code : 'failed','',attempt + 1); throw error as Error; }
+      });
       checkCall(ctx); return verified!;
     } catch (error) {
       checkCall(ctx);

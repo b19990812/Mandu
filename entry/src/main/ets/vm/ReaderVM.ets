@@ -1,10 +1,11 @@
 import { ReaderPerf } from '../diagnostic/ReaderPerf';
+import { ReaderTrace } from '../diagnostic/ReaderTrace';
 import { TileWarmCache } from '../image/TileWarmCache';
 import { common } from '@kit.AbilityKit';
 import { AppContainer } from '../app/AppContainer';
 import { BookSession } from '../business/ReaderService';
 import { ReaderAsset } from '../image/ReaderAssetCache';
-import { CallContext, NetworkPriority } from '../model/RequestTypes';
+import { CallContext, NetworkPriority, ReaderTraceContext } from '../model/RequestTypes';
 import { CancelScope } from '../model/CancelScope';
 import { ViewOperation, viewError } from './ViewOperation';
 import { StripModel } from '../reader/StripModel';
@@ -96,10 +97,30 @@ export class ReaderVM {
   private trial?: ReaderSession;
   private trialToken: string = '';
   private readonly loadedPages: Set<number> = new Set();
+  private traceSessionId: string = '';
+  private readonly traceContexts: Map<string,ReaderTraceContext> = new Map();
+
+  private beginTraceSession(sourceId: string): void {
+    this.traceSessionId = ReaderTrace.newSessionId(); this.traceContexts.clear();
+    ReaderTrace.record(ReaderTrace.context(this.traceSessionId,sourceId,0,'reader'),'reader-session',0,'start');
+  }
+  tracePage(index: number,role: string): ReaderTraceContext {
+    const sourceId = this.reading?.source?.id || this.sourceId;
+    const pageIndex = Math.max(0,index + 1);
+    const sessionId = this.traceSessionId || 'unscoped';
+    const key = sourceId + ':' + pageIndex.toString() + ':' + role;
+    let trace = this.traceContexts.get(key);
+    if (!trace) {
+      trace = ReaderTrace.context(sessionId,sourceId,pageIndex,role);
+      this.traceContexts.set(key,trace);
+    } else { ReaderTrace.registerContext(trace); }
+    return trace;
+  }
 
   initialize(context: common.UIAbilityContext, chapterId: string, offlineOnly: boolean = false,trialToken: string = ''): void {
     this.trialToken = trialToken; this.trialMode = trialToken !== '';
     this.offlineOnly = offlineOnly; this.operation.reopen(); this.app = new AppContainer(context); this.chapterId = chapterId;
+    this.beginTraceSession(this.sourceId);
     this.ahead = new ChapterAhead(this.app.bookReader);
     this.foreground = ReaderLifecycle.isForeground; this.active = this.pageVisible && this.foreground;
     if (this.lifecycle) { this.lifecycle(); }
@@ -107,11 +128,13 @@ export class ReaderVM {
     if (this.active) { this.open(); }
   }
   async open(): Promise<void> {
-    if (!this.app || this.busy || !this.active) { return; } const ctx = this.operation.begin(60000); this.busy = true; this.status = '正在读取完整章节…'; let opened = false;
+    if (!this.app || this.busy || !this.active) { return; } const ctx = this.operation.begin(60000); ctx.trace = ReaderTrace.context(this.traceSessionId,this.sourceId,0,'open');
+    const openStarted = Date.now(); let openOutcome = 'ok'; this.busy = true; this.status = '正在读取完整章节…'; let opened = false;
     try {
       if (!this.trialMode) {
         const chapter = await this.app.catalog.chapter(this.chapterId); if (!this.operation.active(ctx)) { return; }
         this.mangaId = chapter?.mangaId || ''; this.sourceId = this.websiteSource(chapter?.ref.sourceId || '');
+        if (ctx.trace) { ctx.trace.sourceId = this.sourceId; }
       }
       const prefs = await this.app.preferences.read(this.mangaId); if (!this.operation.active(ctx)) { return; }
       this.mode = prefs.mode; this.direction = prefs.direction; this.prefetchEnabled = prefs.prefetch; this.prefetchPages = prefs.prefetchPages;
@@ -124,6 +147,7 @@ export class ReaderVM {
         if (ReaderPerf.enabled && trial.source.id.startsWith('org.example.demo.')) { this.mode = ReaderPerf.mode; this.direction = 'ltr'; this.incognito = true; this.prefetchEnabled = true; this.prefetchWifi = false; }
         else { ReaderPerf.enabled = false; }
         this.sourceId = this.websiteSource(trial.source.id);
+        if (ctx.trace) { ctx.trace.sourceId = this.sourceId; }
         this.reading = { source: trial.source,chapter: trial.manifest.chapter,pages: trial.manifest.pages,cache: trial.cache,offline: false,partialOffline: false };
         const position = await this.app.trialPositions.read(trial.manifest.chapter,trial.manifest.pages);
         if (!this.operation.active(ctx)) { return; }
@@ -143,8 +167,9 @@ export class ReaderVM {
       this.loadedPages.clear(); this.strip.reset(session.pages.length);
       this.status = session.positionChanged ? '内容已改变，已恢复到附近图像' : '章节已读取';
       }
-    } catch (error) { if (this.operation.active(ctx)) { this.status = viewError(error as Error); } }
-    finally { if (this.operation.active(ctx)) { this.busy = false; } }
+    } catch (error) { openOutcome = error instanceof AppError ? error.code : 'failed'; if (this.operation.active(ctx)) { this.status = viewError(error as Error); } }
+    finally { if (ctx.cancel.cancelled && openOutcome === 'ok') { openOutcome = 'cancelled'; }
+      ReaderTrace.record(ctx.trace,'reader-open',Date.now() - openStarted,openOutcome,'',this.total); if (this.operation.active(ctx)) { this.busy = false; } }
     if (opened && this.operation.active(ctx)) { this.readerEpoch++; TileWarmCache.clear(); this.renderAhead?.clear(); this.renderAhead = undefined; this.prefetch?.clear(); this.prefetch = undefined; this.prefetchIndex = -1; await this.load(this.index, true); }
   }
   async load(index: number, restore: boolean = false): Promise<void> {
@@ -162,8 +187,10 @@ export class ReaderVM {
     this.turnDirection = (index < this.index ? -1 : 1) * (this.mode !== 'vertical' && this.direction === 'rtl' ? -1 : 1);
     const displayIndex = this.mode === 'spread' ? Math.floor(index / 2) * 2 : index;
     try {
-      const requests: Promise<ReaderAsset>[] = [session.cache.load(session.source,session.chapter,session.pages[displayIndex],ctx)];
-      if (this.mode === 'spread' && displayIndex + 1 < this.total) { requests.push(session.cache.load(session.source,session.chapter,session.pages[displayIndex + 1],ctx)); }
+      const pageContext = (pageIndex: number): CallContext => ({ callId: ctx.callId + '-page-' + pageIndex.toString(),deadlineMs: ctx.deadlineMs,
+        cancel: ctx.cancel,ruleRevision: ctx.ruleRevision,priority: ctx.priority,trace: this.tracePage(pageIndex,'visible') });
+      const requests: Promise<ReaderAsset>[] = [session.cache.load(session.source,session.chapter,session.pages[displayIndex],pageContext(displayIndex))];
+      if (this.mode === 'spread' && displayIndex + 1 < this.total) { requests.push(session.cache.load(session.source,session.chapter,session.pages[displayIndex + 1],pageContext(displayIndex + 1))); }
       const assets = await Promise.all(requests);
       if (!this.operation.active(ctx)) { return; }
       this.index = index; this.displayIndex = displayIndex; if (!restore) { this.ratio = 0; }
@@ -187,13 +214,15 @@ export class ReaderVM {
     }
     if (!this.prefetch) {
       this.prefetch = new ReaderPreloader(async (page: number,scope: CancelScope) => {
-        await session.cache.load(session.source,session.chapter,session.pages[page],{ callId: 'reader-prefetch',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: session.source?.version || 0,priority: { value: NetworkPriority.Prefetch } });
+        await session.cache.load(session.source,session.chapter,session.pages[page],{ callId: 'reader-prefetch',deadlineMs: Date.now() + 60000,cancel: scope,
+          ruleRevision: session.source?.version || 0,priority: { value: NetworkPriority.Prefetch },trace: this.tracePage(page,'prefetch') });
       });
     }
     if (!this.usesPager() && !this.renderAhead) {
       this.renderAhead = new ReaderPreloader(async (page: number, scope: CancelScope) => {
-        const asset = await session.cache.load(session.source,session.chapter,session.pages[page],{ callId: 'reader-prerender-asset',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: session.source?.version || 0,priority: { value: NetworkPriority.Near } });
-        await TileWarmCache.page(asset,scope);
+        const asset = await session.cache.load(session.source,session.chapter,session.pages[page],{ callId: 'reader-prerender-asset',deadlineMs: Date.now() + 60000,cancel: scope,
+          ruleRevision: session.source?.version || 0,priority: { value: NetworkPriority.Near },trace: this.tracePage(page,'near') });
+        await TileWarmCache.page(asset,scope,this.tracePage(page,'decode-prefetch'));
       });
     }
     this.renderAhead?.update(index,this.mode === 'spread' ? 2 : 1,this.total,2);
@@ -204,9 +233,8 @@ export class ReaderVM {
     const span = this.mode === 'spread' ? 2 : 1; const first = Math.floor(index / span) * span;
     for (let page = first; page < first + span; page++) { this.reading?.cache.prioritize?.(page); }
   }
-  async pagerAsset(index: number, scope: CancelScope): Promise<ReaderAsset> {
-    const span = this.mode === 'spread' ? 2 : 1;
-    return this.stripAsset(index,scope,Math.floor(index / span) !== Math.floor(this.pagerTarget / span));
+  async pagerAsset(index: number, scope: CancelScope, foreground: boolean): Promise<ReaderAsset> {
+    return this.stripAsset(index,scope,!foreground);
   }
   async allowPagerPrefetch(): Promise<boolean> {
     if (!this.active || !this.prefetchEnabled) { return false; }
@@ -224,7 +252,9 @@ export class ReaderVM {
     if (!this.ahead || !this.active || !this.preloadNext || !this.prefetchEnabled || this.trialMode || !this.nextId || this.index + Math.max(10,this.prefetchPages) < this.total) { return; }
     const id = this.nextId;
     if (this.prefetchWifi && !await NetworkPolicy.allowed(true)) { return; }
-    if (this.active && id === this.nextId) { this.ahead.prepare(id,this.offlineOnly,this.skipRead); }
+    if (this.active && id === this.nextId) {
+      this.ahead.prepare(id,this.offlineOnly,this.skipRead,ReaderTrace.context(this.traceSessionId,this.sourceId,0,'chapter-prefetch'));
+    }
   }
   scroll(ratio: number): void {
     if (!this.active || this.busy || this.pagerMoving || this.chapterChanging) { return; }
@@ -235,7 +265,8 @@ export class ReaderVM {
   async stripAsset(index: number, scope: CancelScope,background: boolean = false): Promise<ReaderAsset> {
     const session = this.reading; if (!this.active || !session || !session.pages[index]) { throw new AppError(ErrorCode.CANCELLED, '章节已关闭'); }
     try {
-      const asset = await session.cache.load(session.source, session.chapter, session.pages[index], { callId: 'strip-' + index.toString(), deadlineMs: Date.now() + 60000, cancel: scope, ruleRevision: session.source?.version || 0,priority: { value: background ? NetworkPriority.Near : NetworkPriority.Visible } });
+      const asset = await session.cache.load(session.source, session.chapter, session.pages[index], { callId: 'strip-' + index.toString(), deadlineMs: Date.now() + 60000, cancel: scope,
+        ruleRevision: session.source?.version || 0,priority: { value: background ? NetworkPriority.Near : NetworkPriority.Visible },trace: this.tracePage(index,background ? 'near' : 'visible') });
       if (scope.cancelled || this.reading !== session || !this.active) { throw new AppError(ErrorCode.CANCELLED, '章节已关闭'); }
       this.loadedPages.add(index); return asset;
     } catch (error) { if (!scope.cancelled && this.reading === session) { this.loadedPages.delete(index); } throw error as Error; }
@@ -278,28 +309,34 @@ export class ReaderVM {
   async changeChapter(id: string, completed: boolean = false): Promise<void> {
     if (!id || !this.app || this.trialMode || this.busy || this.pagerMoving || this.chapterChanging || !this.active) { return; }
     this.chapterChanging = true; const scope = new CancelScope(); this.chapterScope = scope;
+    const nextTraceSession = ReaderTrace.newSessionId(); const changeTrace = ReaderTrace.context(nextTraceSession,this.sourceId,0,'open');
+    const changeStarted = Date.now(); let changeOutcome = 'ok';
     const old = this.reading; const forward = id === this.nextId; let prepared: BookSession | undefined;
     try {
       // Save the old chapter before transferring cache ownership; failures leave it readable.
-      if (!await this.persistPosition(completed) || !this.active) { return; }
+      if (!await this.persistPosition(completed) || !this.active) { changeOutcome = 'aborted'; return; }
       prepared = await this.ahead?.take(id);
-      if (scope.cancelled || !this.active) { return; }
-      if (!prepared) { prepared = await this.app.bookReader.open(id,{ callId: 'reader-continue',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: 1 },this.offlineOnly,this.skipRead); }
-      if (scope.cancelled || !this.active || this.reading !== old) { return; }
+      if (scope.cancelled || !this.active) { changeOutcome = scope.cancelled ? 'cancelled' : 'inactive'; return; }
+      if (!prepared) { prepared = await this.app.bookReader.open(id,{ callId: 'reader-continue',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: 1,trace: changeTrace },this.offlineOnly,this.skipRead); }
+      if (scope.cancelled || !this.active || this.reading !== old) { changeOutcome = scope.cancelled ? 'cancelled' : 'superseded'; return; }
+      changeTrace.sourceId = this.websiteSource(prepared.source?.id || '');
       const start = forward ? 0 : prepared.startIndex;
       const display = this.mode === 'spread' ? Math.floor(start / 2) * 2 : start;
       const assets: ReaderAsset[] = [];
       for (let index = display; index < Math.min(prepared.pages.length,display + (this.mode === 'spread' ? 2 : 1)); index++) {
-        const asset = await prepared.cache.load(prepared.source,prepared.chapter.ref,prepared.pages[index],{ callId: 'reader-continue-image',deadlineMs: Date.now() + 60000,cancel: scope,ruleRevision: prepared.source?.version || 1 });
-        assets.push(asset); await TileWarmCache.page(asset,scope);
+        const pageTrace = ReaderTrace.context(nextTraceSession,changeTrace.sourceId,index + 1,'visible');
+        const asset = await prepared.cache.load(prepared.source,prepared.chapter.ref,prepared.pages[index],{ callId: 'reader-continue-image',deadlineMs: Date.now() + 60000,
+          cancel: scope,ruleRevision: prepared.source?.version || 1,trace: pageTrace });
+        assets.push(asset); await TileWarmCache.page(asset,scope,ReaderTrace.context(nextTraceSession,changeTrace.sourceId,index + 1,'decode-prefetch'));
       }
-      if (scope.cancelled || !this.active || this.reading !== old) { return; }
+      if (scope.cancelled || !this.active || this.reading !== old) { changeOutcome = scope.cancelled ? 'cancelled' : 'superseded'; return; }
       this.clearSaveTimers(); this.operation.cancel(); this.prefetchGeneration++;
       this.renderAhead?.clear(); this.renderAhead = undefined; this.prefetch?.clear(); this.prefetch = undefined; this.prefetchIndex = -1;
       const session = prepared; prepared = undefined;
       this.session = session; this.reading = { source: session.source,chapter: session.chapter.ref,pages: session.pages,cache: session.cache,offline: session.offline,partialOffline: session.partialOffline };
       this.chapterId = id; this.title = session.mangaTitle + ' · ' + session.chapter.title;
       this.sourceId = this.websiteSource(session.chapter.ref.sourceId);
+      this.traceSessionId = nextTraceSession; this.traceContexts.clear();
       this.turnDirection = (forward ? 1 : -1) * (this.mode !== 'vertical' && this.direction === 'rtl' ? -1 : 1);
       this.total = session.pages.length; this.index = start; this.displayIndex = display; this.ratio = forward ? 0 : session.startRatio;
       this.completed = session.startCompleted; this.bookmarked = session.chapter.bookmarked; this.previousId = session.previousId; this.nextId = session.nextId;
@@ -309,8 +346,10 @@ export class ReaderVM {
       this.readerEpoch++; this.stripRevision++; this.stripRestoring = this.isStrip();
       this.status = '图像 ' + (start + 1).toString() + ' / ' + this.total.toString();
       old?.cache.dispose(); this.startPrefetch(display); this.prepareNext();
-    } catch (error) { if (!scope.cancelled && this.active) { this.status = viewError(error as Error); } }
-    finally { prepared?.cache.dispose(); if (this.chapterScope === scope) { this.chapterScope = undefined; this.chapterChanging = false; } }
+    } catch (error) { changeOutcome = error instanceof AppError ? error.code : 'failed'; if (!scope.cancelled && this.active) { this.status = viewError(error as Error); } }
+    finally { if (scope.cancelled && changeOutcome === 'ok') { changeOutcome = 'cancelled'; }
+      ReaderTrace.record(changeTrace,'chapter-change',Date.now() - changeStarted,changeOutcome,'',prepared?.pages.length || this.total);
+      prepared?.cache.dispose(); if (this.chapterScope === scope) { this.chapterScope = undefined; this.chapterChanging = false; } }
   }
   continueChapter(): void {
     if (this.autoNext && !this.trialMode && this.nextId && this.active && !this.busy && !this.chapterChanging) { this.changeChapter(this.nextId,true); }
@@ -378,5 +417,6 @@ export class ReaderVM {
     this.clearSaveTimers(); this.save(); this.operation.close(); this.active = false;
     if (this.lifecycle) { this.lifecycle(); this.lifecycle = undefined; }
     TileWarmCache.clear(); this.renderAhead?.clear(); this.renderAhead = undefined; this.prefetch?.clear(); this.ahead?.clear(); if (this.reading) { this.reading.cache.dispose(); } this.asset = undefined; this.companionAsset = undefined; this.busy = false;
+    ReaderTrace.flush().catch(() => {});
   }
 }

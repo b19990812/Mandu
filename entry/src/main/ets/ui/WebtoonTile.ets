@@ -39,7 +39,7 @@ export struct WebtoonTile {
   }
   build() {
     if (this.asset && this.item.tile >= 0) {
-      ImageTile({ asset: this.asset, index: this.item.tile, quality: 1 })
+      ImageTile({ asset: this.asset, index: this.item.tile, quality: 1,traceKey: this.vm.tracePage(this.item.page,'visible').operationId })
     } else {
       Column({ space: 12 }) {
         Text('图像 ' + (this.item.page + 1).toString() + ' · ' + this.status).fontSize(14)
